@@ -1,4 +1,4 @@
-import { sheets_v4 } from "@googleapis/sheets";
+import { google } from "googleapis";
 
 export const getSheetsClient = () => {
   const clientEmail = process.env.SHEETS_CLIENT_EMAIL;
@@ -8,13 +8,13 @@ export const getSheetsClient = () => {
     throw new Error("Google Sheets credentials are missing");
   }
 
-  return new sheets_v4.Sheets({
-    auth: new sheets_v4.JWT({
-      email: clientEmail,
-      key: privateKey,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-    })
+  const auth = new google.auth.JWT({
+    email: clientEmail,
+    key: privateKey,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
   });
+
+  return google.sheets({ version: "v4", auth });
 };
 
 export const getSheetId = () => {
