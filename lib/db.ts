@@ -1,25 +1,29 @@
 import { Pool } from "pg";
 
-const connectionString = process.env.DATABASE_URL;
+const globalForPg = global as typeof global & { pgPool?: Pool };
 
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not set");
-}
+export const getPool = () => {
+  if (globalForPg.pgPool) {
+    return globalForPg.pgPool;
+  }
 
-const shouldUseSsl =
-  process.env.PGSSLMODE === "require" ||
-  (connectionString?.includes("sslmode=require") ?? false);
+  const connectionString = process.env.DATABASE_URL;
 
-const createPool = () =>
-  new Pool({
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not set");
+  }
+
+  const shouldUseSsl =
+    process.env.PGSSLMODE === "require" || connectionString.includes("sslmode=require");
+
+  const pool = new Pool({
     connectionString,
     ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined
   });
 
-const globalForPg = global as typeof global & { pgPool?: ReturnType<typeof createPool> };
+  if (process.env.NODE_ENV !== "production") {
+    globalForPg.pgPool = pool;
+  }
 
-export const pool = globalForPg.pgPool ?? createPool();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPg.pgPool = pool;
-}
+  return pool;
+};

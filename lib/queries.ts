@@ -1,15 +1,15 @@
-import { pool } from "@/lib/db";
+import { getPool } from "@/lib/db";
 import type { Map, Player, PlayerMapStat, Series } from "@/lib/types";
 
 export async function getPlayers(): Promise<Player[]> {
-  const { rows } = await pool.query(
+  const { rows } = await getPool().query(
     "select discord_id, ign, rank, team, status, womens_status, womens_team, salary from players order by ign"
   );
   return rows as Player[];
 }
 
 export async function getPlayerById(discordId: string): Promise<Player | null> {
-  const { rows } = await pool.query(
+  const { rows } = await getPool().query(
     "select discord_id, ign, rank, team, status, womens_status, womens_team, salary from players where discord_id = $1",
     [discordId]
   );
@@ -17,7 +17,7 @@ export async function getPlayerById(discordId: string): Promise<Player | null> {
 }
 
 export async function getSeriesById(matchId: string): Promise<Series | null> {
-  const { rows } = await pool.query(
+  const { rows } = await getPool().query(
     "select match_id, match_date, division, home_team, away_team, home_wins, away_wins, series_winner from series where match_id = $1",
     [matchId]
   );
@@ -25,7 +25,7 @@ export async function getSeriesById(matchId: string): Promise<Series | null> {
 }
 
 export async function getMapsBySeries(matchId: string): Promise<Map[]> {
-  const { rows } = await pool.query(
+  const { rows } = await getPool().query(
     "select id, match_id, map_number, map_name, mode, winning_team, losing_team from maps where match_id = $1 order by map_number",
     [matchId]
   );
@@ -42,7 +42,7 @@ export type PlayerMapStatWithContext = PlayerMapStat & {
 export async function getPlayerStatsByPlayer(
   discordId: string
 ): Promise<PlayerMapStatWithContext[]> {
-  const { rows } = await pool.query(
+  const { rows } = await getPool().query(
     `
     select
       pms.id,
@@ -81,7 +81,7 @@ export type SeriesPlayerStat = PlayerMapStat & {
 };
 
 export async function getPlayerStatsBySeries(matchId: string): Promise<SeriesPlayerStat[]> {
-  const { rows } = await pool.query(
+  const { rows } = await getPool().query(
     `
     select
       pms.id,
