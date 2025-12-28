@@ -2,33 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getMapsBySeries,
-  getPlayerById,
   getPlayerStatsBySeries,
   getSeriesById
-} from "@/lib/data";
+} from "@/lib/queries";
 
-export default function SeriesPage({ params }: { params: { match_id: string } }) {
-  const match = getSeriesById(params.match_id);
+export default async function SeriesPage({ params }: { params: { match_id: string } }) {
+  const match = await getSeriesById(params.match_id);
 
   if (!match) {
     notFound();
   }
 
-  const maps = getMapsBySeries(params.match_id);
-  const stats = getPlayerStatsBySeries(params.match_id);
-
-  const statsWithPlayer = stats.map((stat) => {
-    const player = getPlayerById(stat.discord_id);
-    const map = maps.find((entry) => entry.id === stat.map_id);
-
-    return {
-      ...stat,
-      ign: player?.ign ?? "Unknown",
-      team: player?.team ?? "Unknown",
-      map_name: map?.map_name ?? "Unknown map",
-      mode: map?.mode ?? "Unknown"
-    };
-  });
+  const maps = await getMapsBySeries(params.match_id);
+  const statsWithPlayer = await getPlayerStatsBySeries(params.match_id);
 
   return (
     <section className="flex flex-col gap-6">

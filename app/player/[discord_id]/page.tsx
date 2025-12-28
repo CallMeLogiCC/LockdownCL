@@ -1,41 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  getPlayerById,
-  getPlayerStatsByPlayer,
-  getMapsBySeries,
-  series
-} from "@/lib/data";
+import { getPlayerById, getPlayerStatsByPlayer } from "@/lib/queries";
 
-export default function PlayerPage({
+export default async function PlayerPage({
   params
 }: {
   params: { discord_id: string };
 }) {
-  const player = getPlayerById(params.discord_id);
+  const player = await getPlayerById(params.discord_id);
 
   if (!player) {
     notFound();
   }
 
-  const stats = getPlayerStatsByPlayer(params.discord_id);
-
-  const mapDetails = stats.map((stat) => {
-    const map = getMapsBySeries(stat.match_id).find((entry) => entry.id === stat.map_id);
-    const match = series.find((entry) => entry.match_id === stat.match_id);
-
-    return {
-      ...stat,
-      map_name: map?.map_name ?? "Unknown map",
-      mode: map?.mode ?? "Unknown",
-      match_id: stat.match_id,
-      opponent: match
-        ? match.home_team === player.team
-          ? match.away_team
-          : match.home_team
-        : "Unknown"
-    };
-  });
+  const mapDetails = await getPlayerStatsByPlayer(params.discord_id);
 
   return (
     <section className="flex flex-col gap-6">

@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { players } from "@/lib/data";
+import { getPlayers } from "@/lib/queries";
 
-export default function PlayersPage() {
+export default async function PlayersPage() {
+  const players = await getPlayers();
+
   return (
     <section className="flex flex-col gap-6">
       <div>

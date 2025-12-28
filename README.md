@@ -9,6 +9,8 @@ npm install
 npm run dev
 ```
 
+Ensure `DATABASE_URL` is set before running the app locally.
+
 Visit `http://localhost:3000` and explore:
 - `/players`
 - `/player/[discord_id]`
@@ -52,10 +54,10 @@ See `db/schema.sql` for the full schema. It mirrors the league data model:
 - `maps`
 - `player_map_stats`
 
-## API Endpoints (mock data)
+## API Endpoints (database-backed)
 
 - `GET /api/players`
 - `GET /api/player/[discord_id]`
 - `GET /api/series/[match_id]`
 
-These are powered by `lib/data.ts` so you can swap in real DB queries later.
+These are powered by Postgres via `lib/queries.ts` and require `DATABASE_URL`.
