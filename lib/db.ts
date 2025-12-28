@@ -1,12 +1,6 @@
 import { Pool } from "pg";
 
-const globalForPg = global as typeof global & { pgPool?: Pool };
-
-export const getPool = () => {
-  if (globalForPg.pgPool) {
-    return globalForPg.pgPool;
-  }
-
+const createPool = () => {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
@@ -16,10 +10,19 @@ export const getPool = () => {
   const shouldUseSsl =
     process.env.PGSSLMODE === "require" || connectionString.includes("sslmode=require");
 
-  const pool = new Pool({
+  return new Pool({
     connectionString,
     ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined
   });
+};
+
+const globalForPg = global as typeof global & { pgPool?: ReturnType<typeof createPool> };
+
+export const getPool = () => {
+  if (globalForPg.pgPool) {
+    return globalForPg.pgPool;
+  }
+  const pool = createPool();
 
   if (process.env.NODE_ENV !== "production") {
     globalForPg.pgPool = pool;
