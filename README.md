@@ -10,6 +10,7 @@ npm run dev
 ```
 
 Ensure `DATABASE_URL` is set before running the app locally.
+If it is missing in production, the players and series pages will display a configuration message instead of crashing.
 
 Visit `http://localhost:3000` and explore:
 - `/players`

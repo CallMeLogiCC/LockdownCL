@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { hasDatabaseUrl } from "@/lib/db";
 import { getPlayerById, getPlayerStatsByPlayer } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,15 @@ export default async function PlayerPage({
 }: {
   params: { discord_id: string };
 }) {
+  if (!hasDatabaseUrl()) {
+    return (
+      <section className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+        Database is not configured. Please set <code>DATABASE_URL</code> in your Vercel
+        environment variables and redeploy.
+      </section>
+    );
+  }
+
   const player = await getPlayerById(params.discord_id);
 
   if (!player) {

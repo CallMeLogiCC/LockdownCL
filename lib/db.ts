@@ -1,5 +1,7 @@
 import { Pool } from "pg";
 
+export const hasDatabaseUrl = () => Boolean(process.env.DATABASE_URL);
+
 const createPool = () => {
   const connectionString = process.env.DATABASE_URL;
 
@@ -24,9 +26,7 @@ export const getPool = () => {
   }
   const pool = createPool();
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForPg.pgPool = pool;
-  }
+  globalForPg.pgPool = pool;
 
   return pool;
 };

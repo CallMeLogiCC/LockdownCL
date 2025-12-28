@@ -1,9 +1,19 @@
 import Link from "next/link";
+import { hasDatabaseUrl } from "@/lib/db";
 import { getPlayers } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlayersPage() {
+  if (!hasDatabaseUrl()) {
+    return (
+      <section className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+        Database is not configured. Please set <code>DATABASE_URL</code> in your Vercel
+        environment variables and redeploy.
+      </section>
+    );
+  }
+
   const players = await getPlayers();
 
   return (

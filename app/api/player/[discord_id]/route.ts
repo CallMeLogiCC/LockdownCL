@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasDatabaseUrl } from "@/lib/db";
 import { getPlayerById, getPlayerStatsByPlayer } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,13 @@ export async function GET(
   _request: Request,
   { params }: { params: { discord_id: string } }
 ) {
+  if (!hasDatabaseUrl()) {
+    return NextResponse.json(
+      { error: "DATABASE_URL is not set" },
+      { status: 500 }
+    );
+  }
+
   const player = await getPlayerById(params.discord_id);
 
   if (!player) {
