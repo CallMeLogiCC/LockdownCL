@@ -2,34 +2,34 @@ import { pool } from "@/lib/db";
 import type { Map, Player, PlayerMapStat, Series } from "@/lib/types";
 
 export async function getPlayers(): Promise<Player[]> {
-  const { rows } = await pool.query<Player>(
+  const { rows } = await pool.query(
     "select discord_id, ign, rank, team, status, womens_status, womens_team, salary from players order by ign"
   );
-  return rows;
+  return rows as Player[];
 }
 
 export async function getPlayerById(discordId: string): Promise<Player | null> {
-  const { rows } = await pool.query<Player>(
+  const { rows } = await pool.query(
     "select discord_id, ign, rank, team, status, womens_status, womens_team, salary from players where discord_id = $1",
     [discordId]
   );
-  return rows[0] ?? null;
+  return (rows as Player[])[0] ?? null;
 }
 
 export async function getSeriesById(matchId: string): Promise<Series | null> {
-  const { rows } = await pool.query<Series>(
+  const { rows } = await pool.query(
     "select match_id, match_date, division, home_team, away_team, home_wins, away_wins, series_winner from series where match_id = $1",
     [matchId]
   );
-  return rows[0] ?? null;
+  return (rows as Series[])[0] ?? null;
 }
 
 export async function getMapsBySeries(matchId: string): Promise<Map[]> {
-  const { rows } = await pool.query<Map>(
+  const { rows } = await pool.query(
     "select id, match_id, map_number, map_name, mode, winning_team, losing_team from maps where match_id = $1 order by map_number",
     [matchId]
   );
-  return rows;
+  return rows as Map[];
 }
 
 export type PlayerMapStatWithContext = PlayerMapStat & {
@@ -42,7 +42,7 @@ export type PlayerMapStatWithContext = PlayerMapStat & {
 export async function getPlayerStatsByPlayer(
   discordId: string
 ): Promise<PlayerMapStatWithContext[]> {
-  const { rows } = await pool.query<PlayerMapStatWithContext>(
+  const { rows } = await pool.query(
     `
     select
       pms.id,
@@ -70,7 +70,7 @@ export async function getPlayerStatsByPlayer(
     `,
     [discordId]
   );
-  return rows;
+  return rows as PlayerMapStatWithContext[];
 }
 
 export type SeriesPlayerStat = PlayerMapStat & {
@@ -81,7 +81,7 @@ export type SeriesPlayerStat = PlayerMapStat & {
 };
 
 export async function getPlayerStatsBySeries(matchId: string): Promise<SeriesPlayerStat[]> {
-  const { rows } = await pool.query<SeriesPlayerStat>(
+  const { rows } = await pool.query(
     `
     select
       pms.id,
@@ -106,5 +106,5 @@ export async function getPlayerStatsBySeries(matchId: string): Promise<SeriesPla
     `,
     [matchId]
   );
-  return rows;
+  return rows as SeriesPlayerStat[];
 }
