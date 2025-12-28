@@ -6,10 +6,14 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set");
 }
 
+const shouldUseSsl =
+  process.env.PGSSLMODE === "require" ||
+  (connectionString?.includes("sslmode=require") ?? false);
+
 const createPool = () =>
   new Pool({
     connectionString,
-    ssl: { rejectUnauthorized: false }
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined
   });
 
 const globalForPg = global as typeof global & { pgPool?: ReturnType<typeof createPool> };
