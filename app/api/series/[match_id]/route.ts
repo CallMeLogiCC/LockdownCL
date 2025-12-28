@@ -5,6 +5,9 @@ import {
   getSeriesById
 } from "@/lib/queries";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function GET(
   _request: Request,
   { params }: { params: { match_id: string } }

@@ -6,6 +6,8 @@ import {
   getSeriesById
 } from "@/lib/queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function SeriesPage({ params }: { params: { match_id: string } }) {
   const match = await getSeriesById(params.match_id);
 

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getPlayerById, getPlayerStatsByPlayer } from "@/lib/queries";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export async function GET(
   _request: Request,
   { params }: { params: { discord_id: string } }
