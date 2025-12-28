@@ -40,10 +40,11 @@ SHEET_ID=your-google-sheet-id
 
 ## Data Ingestion (Google Sheets)
 
-The `/app/api/ingest-sheets` route is a stub to demonstrate how ingestion will work. It is ready to be replaced with real Google Sheets API logic:
+The `/app/api/ingest-sheets` route pulls data from Google Sheets and upserts into Postgres.
 
 - Use `SHEETS_CLIENT_EMAIL` and `SHEETS_PRIVATE_KEY` for service account auth.
-- Fetch data from `SHEET_ID` and translate rows into Postgres inserts.
+- Set `SHEET_ID` and optionally `SHEET_RANGE` (defaults to `players!A2:H`).
+- POST to `/api/ingest-sheets` to sync the players table.
 - The Postgres schema lives in `db/schema.sql`.
 
 ## Database Schema

@@ -108,3 +108,43 @@ export async function getPlayerStatsBySeries(matchId: string): Promise<SeriesPla
   );
   return rows as SeriesPlayerStat[];
 }
+
+export async function upsertPlayers(players: Player[]): Promise<number> {
+  if (players.length === 0) {
+    return 0;
+  }
+
+  const values: Array<string | number | null> = [];
+  const rows = players.map((player, index) => {
+    const offset = index * 8;
+    values.push(
+      player.discord_id,
+      player.ign,
+      player.rank,
+      player.team,
+      player.status,
+      player.womens_status,
+      player.womens_team,
+      player.salary
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
+  });
+
+  const query = `
+    insert into players
+      (discord_id, ign, rank, team, status, womens_status, womens_team, salary)
+    values ${rows.join(", ")}
+    on conflict (discord_id)
+    do update set
+      ign = excluded.ign,
+      rank = excluded.rank,
+      team = excluded.team,
+      status = excluded.status,
+      womens_status = excluded.womens_status,
+      womens_team = excluded.womens_team,
+      salary = excluded.salary
+  `;
+
+  const result = await getPool().query(query, values);
+  return result.rowCount ?? 0;
+}
