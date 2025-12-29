@@ -36,26 +36,32 @@ export async function POST() {
     );
   }
 
-  const sheets = getSheetsClient();
-  const sheetId = getSheetId();
-  const range = getSheetRange(PLAYERS_RANGE_FALLBACK);
+  try {
+    const sheets = getSheetsClient();
+    const sheetId = getSheetId();
+    const range = getSheetRange(PLAYERS_RANGE_FALLBACK);
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range
-  });
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range
+    });
 
-  const values = response.data.values ?? [];
-  const players = values
-    .map((row) => mapPlayerRow(row as string[]))
-    .filter((player): player is Player => Boolean(player?.discord_id));
+    const values = response.data.values ?? [];
+    const players = values
+      .map((row) => mapPlayerRow(row as string[]))
+      .filter((player): player is Player => Boolean(player?.discord_id));
 
-  const upserted = await upsertPlayers(players);
+    const upserted = await upsertPlayers(players);
 
-  return NextResponse.json({
-    status: "ok",
-    range,
-    rows: values.length,
-    upserted
-  });
+    return NextResponse.json({
+      status: "ok",
+      range,
+      rows: values.length,
+      upserted
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown ingestion error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
