@@ -20,6 +20,51 @@ const PLAYER_LOG_RANGE_FALLBACK = "Player Log!A2:P";
 const getRange = (envKey: string, fallback: string) =>
   process.env[envKey] ?? fallback;
 
+const normalizeHeader = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
+
+const buildHeaderIndex = (headers: string[]) => {
+  const index = new Map<string, number>();
+  headers.forEach((header, idx) => {
+    const normalized = normalizeHeader(header);
+    if (normalized) {
+      index.set(normalized, idx);
+    }
+  });
+  return index;
+};
+
+const getHeaderIndex = (
+  index: Map<string, number>,
+  candidates: string[],
+  fallback: number
+) => {
+  for (const candidate of candidates) {
+    const normalized = normalizeHeader(candidate);
+    const match = index.get(normalized);
+    if (match !== undefined) {
+      return match;
+    }
+  }
+  return fallback;
+};
+
+const getHeaderRange = (range: string) => {
+  const [sheetName, gridRange] = range.split("!");
+  if (!sheetName || !gridRange) {
+    return null;
+  }
+
+  const match = gridRange.match(/^([A-Z]+)(\d+)(:([A-Z]+)(\d+)?)?$/i);
+  if (!match) {
+    return null;
+  }
+
+  const startCol = match[1];
+  const endCol = match[4] ?? startCol;
+  return `${sheetName}!${startCol}1:${endCol}1`;
+};
+
 const toNumber = (value: unknown) => {
   const numeric = typeof value === "number" ? value : Number(value ?? 0);
   return Number.isNaN(numeric) ? 0 : numeric;
@@ -113,13 +158,41 @@ export async function POST() {
       PLAYER_LOG_RANGE_FALLBACK
     );
 
+    const playerHeaderRange = getHeaderRange(playerRange);
+    const seriesHeaderRange = getHeaderRange(seriesRange);
+    const mapsHeaderRange = getHeaderRange(mapsRange);
+    const playerLogHeaderRange = getHeaderRange(playerLogRange);
+
+    const headerRanges = [
+      playerHeaderRange,
+      seriesHeaderRange,
+      mapsHeaderRange,
+      playerLogHeaderRange
+    ].filter((range): range is string => Boolean(range));
+
     const response = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
-      ranges: [playerRange, seriesRange, mapsRange, playerLogRange]
+      ranges: [playerRange, seriesRange, mapsRange, playerLogRange, ...headerRanges]
     });
 
-    const [playerValues, seriesValues, mapValues, playerLogValues] =
-      response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+    const valueRanges = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+    const [playerValues, seriesValues, mapValues, playerLogValues] = valueRanges;
+    let headerOffset = 4;
+    const playerHeaderValues = playerHeaderRange
+      ? valueRanges[headerOffset++] ?? []
+      : [];
+    const seriesHeaderValues = seriesHeaderRange
+      ? valueRanges[headerOffset++] ?? []
+      : [];
+    const mapsHeaderValues = mapsHeaderRange
+      ? valueRanges[headerOffset++] ?? []
+      : [];
+    const playerLogHeaderValues = playerLogHeaderRange
+      ? valueRanges[headerOffset++] ?? []
+      : [];
+
+    const mapHeaderIndex = buildHeaderIndex(mapsHeaderValues[0] ?? []);
+    const playerLogHeaderIndex = buildHeaderIndex(playerLogHeaderValues[0] ?? []);
 
     const players = (playerValues ?? [])
       .map((row) => mapPlayerRow(row as string[]))
@@ -151,8 +224,15 @@ export async function POST() {
     const maps = uniqueByKey(
       (mapValues ?? [])
         .map((row) => {
-          const match_id = row[0] ?? "";
-          const map_number = toNumber(row[1]);
+          const match_id =
+            row[
+              getHeaderIndex(mapHeaderIndex, ["match id", "match_id"], 0)
+            ] ?? "";
+          const map_number = toNumber(
+            row[
+              getHeaderIndex(mapHeaderIndex, ["map #", "map number"], 1)
+            ]
+          );
           if (!match_id || !map_number) {
             return null;
           }
@@ -161,10 +241,30 @@ export async function POST() {
             id: map_id,
             match_id,
             map_number,
-            mode: row[2] ?? "",
-            map_name: row[3] ?? "",
-            winning_team: row[4] ?? "",
-            losing_team: row[5] ?? ""
+            map_name:
+              row[
+                getHeaderIndex(mapHeaderIndex, ["map name", "map"], 2)
+              ] ?? "",
+            mode:
+              row[
+                getHeaderIndex(mapHeaderIndex, ["mode", "game mode"], 3)
+              ] ?? "",
+            winning_team:
+              row[
+                getHeaderIndex(
+                  mapHeaderIndex,
+                  ["winning team", "winner"],
+                  4
+                )
+              ] ?? "",
+            losing_team:
+              row[
+                getHeaderIndex(
+                  mapHeaderIndex,
+                  ["losing team", "loser"],
+                  5
+                )
+              ] ?? ""
           };
         })
         .filter((map): map is NonNullable<typeof map> => Boolean(map)),
@@ -174,9 +274,27 @@ export async function POST() {
     const playerStats = uniqueByKey(
       (playerLogValues ?? [])
         .map((row) => {
-          const match_id = row[0] ?? "";
-          const discord_id = row[6] ?? "";
-          const map_number = toNumber(row[14]);
+          const match_id =
+            row[
+              getHeaderIndex(playerLogHeaderIndex, ["match id", "match_id"], 0)
+            ] ?? "";
+          const discord_id =
+            row[
+              getHeaderIndex(
+                playerLogHeaderIndex,
+                ["discord id", "discord_id", "discord"],
+                6
+              )
+            ] ?? "";
+          const map_number = toNumber(
+            row[
+              getHeaderIndex(
+                playerLogHeaderIndex,
+                ["map #", "map number", "map_num", "map"],
+                14
+              )
+            ]
+          );
           if (!match_id || !discord_id || !map_number) {
             return null;
           }
@@ -186,12 +304,32 @@ export async function POST() {
             match_id,
             map_id,
             discord_id,
-            kills: toNumber(row[8]),
-            deaths: toNumber(row[9]),
-            assists: 0,
-            hp_time: toNumber(row[11]),
-            plants: toNumber(row[12]),
-            defuses: toNumber(row[13])
+            kills: toNumber(
+              row[getHeaderIndex(playerLogHeaderIndex, ["kills", "k"], 8)]
+            ),
+            deaths: toNumber(
+              row[getHeaderIndex(playerLogHeaderIndex, ["deaths", "d"], 9)]
+            ),
+            assists: toNumber(
+              row[
+                getHeaderIndex(playerLogHeaderIndex, ["assists", "a"], 10)
+              ]
+            ),
+            hp_time: toNumber(
+              row[
+                getHeaderIndex(
+                  playerLogHeaderIndex,
+                  ["hp time", "hardpoint time", "hill time"],
+                  11
+                )
+              ]
+            ),
+            plants: toNumber(
+              row[getHeaderIndex(playerLogHeaderIndex, ["plants"], 12)]
+            ),
+            defuses: toNumber(
+              row[getHeaderIndex(playerLogHeaderIndex, ["defuses"], 13)]
+            )
           };
         })
         .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat)),
