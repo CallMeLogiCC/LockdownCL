@@ -201,22 +201,6 @@ export const playerLog: PlayerLogEntry[] = [
     team: "Rift Hawks",
     player: "Cipher",
     discord_id: "185204",
-    mode: "Control",
-    k: 22,
-    d: 17,
-    kd: 1.29,
-    hp_time: null,
-    plants: null,
-    defuses: null,
-    ticks: 45,
-    write_in: null
-  },
-  {
-    match_id: "match-002",
-    match_date: "2024-04-19",
-    team: "Rift Hawks",
-    player: "Cipher",
-    discord_id: "185204",
     mode: "Hardpoint",
     k: 26,
     d: 19,
@@ -287,6 +271,7 @@ export const getPlayerStatsBySeries = (matchId: string): SeriesPlayerStat[] => {
     const player = players.find((entry) => entry.discord_id === stat.discord_id);
     return {
       ...stat,
+      discord_id: stat.discord_id ?? "",
       ign: player?.ign ?? null,
       team: player?.team ?? null
     };
