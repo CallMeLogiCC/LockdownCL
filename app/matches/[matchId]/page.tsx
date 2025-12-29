@@ -7,6 +7,17 @@ export const dynamic = "force-dynamic";
 
 const formatStat = (value: number | null) => (value === null ? "—" : value);
 
+const formatMatchDate = (value: string | Date | null) => {
+  if (!value) {
+    return "TBD";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleDateString();
+};
+
 export default async function MatchPage({ params }: { params: { matchId: string } }) {
   if (!hasDatabaseUrl()) {
     return (
@@ -42,7 +53,9 @@ export default async function MatchPage({ params }: { params: { matchId: string 
             <h2 className="text-2xl font-semibold text-white">
               {match.home_team ?? "TBD"} vs {match.away_team ?? "TBD"}
             </h2>
-            <p className="mt-2 text-sm text-white/70">{match.match_date ?? "TBD"}</p>
+            <p className="mt-2 text-sm text-white/70">
+              {formatMatchDate(match.match_date)}
+            </p>
           </div>
           <Link href="/" className="text-sm">
             ← Back to home

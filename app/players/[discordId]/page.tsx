@@ -82,6 +82,17 @@ const getModeWinPercentage = (
   return `${((wins / total) * 100).toFixed(1)}%`;
 };
 
+const formatMatchDate = (value: string | Date | null) => {
+  if (!value) {
+    return "TBD";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleDateString();
+};
+
 export default async function PlayerPage({
   params
 }: {
@@ -195,7 +206,7 @@ export default async function PlayerPage({
                           {match.home_team ?? "TBD"} vs {match.away_team ?? "TBD"}
                         </p>
                         <p className="text-xs text-white/60">
-                          {match.match_date ?? "TBD"} · Opponent: {opponent ?? "TBD"}
+                          {formatMatchDate(match.match_date)} · Opponent: {opponent ?? "TBD"}
                         </p>
                       </div>
                       <div className="text-xs text-white/60">
