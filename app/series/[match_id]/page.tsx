@@ -35,10 +35,10 @@ export default async function SeriesPage({ params }: { params: { match_id: strin
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-white/50">Series</p>
             <h2 className="text-2xl font-semibold text-white">
-              {match.home_team} vs {match.away_team}
+              {match.home_team ?? "TBD"} vs {match.away_team ?? "TBD"}
             </h2>
             <p className="mt-2 text-sm text-white/70">
-              {match.match_date} · Division: {match.division}
+              {match.match_date ?? "TBD"}
             </p>
           </div>
           <Link href="/players" className="text-sm">
@@ -46,8 +46,10 @@ export default async function SeriesPage({ params }: { params: { match_id: strin
           </Link>
         </div>
         <div className="mt-4 flex flex-wrap gap-4 text-sm text-white/70">
-          <span>Scoreline: {match.home_wins} - {match.away_wins}</span>
-          <span>Winner: {match.series_winner}</span>
+          <span>
+            Scoreline: {match.home_wins ?? 0} - {match.away_wins ?? 0}
+          </span>
+          <span>Winner: {match.series_winner ?? "TBD"}</span>
         </div>
       </div>
 
@@ -55,11 +57,14 @@ export default async function SeriesPage({ params }: { params: { match_id: strin
         <h3 className="text-lg font-semibold text-white">Maps in Series</h3>
         <ul className="mt-3 space-y-2 text-sm text-white/70">
           {maps.map((map) => (
-            <li key={map.id} className="flex flex-wrap items-center justify-between gap-2">
+            <li
+              key={`${map.match_id}-${map.map_num}`}
+              className="flex flex-wrap items-center justify-between gap-2"
+            >
               <span>
-                Map {map.map_number}: {map.map_name} ({map.mode})
+                Map {map.map_num}: {map.map} ({map.mode})
               </span>
-              <span className="text-white/50">Winner: {map.winning_team}</span>
+              <span className="text-white/50">Winner: {map.winner_team}</span>
             </li>
           ))}
         </ul>
@@ -71,31 +76,43 @@ export default async function SeriesPage({ params }: { params: { match_id: strin
             <tr>
               <th className="px-4 py-3">Player</th>
               <th className="px-4 py-3">Team</th>
-              <th className="px-4 py-3">Map</th>
+              <th className="px-4 py-3">Mode</th>
               <th className="px-4 py-3">Kills</th>
               <th className="px-4 py-3">Deaths</th>
-              <th className="px-4 py-3">Assists</th>
+              <th className="px-4 py-3">KD</th>
               <th className="px-4 py-3">HP Time</th>
               <th className="px-4 py-3">Plants</th>
               <th className="px-4 py-3">Defuses</th>
+              <th className="px-4 py-3">Ticks</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10">
             {statsWithPlayer.map((stat) => (
-              <tr key={stat.id} className="hover:bg-white/5">
+              <tr key={`${stat.discord_id}-${stat.mode}`} className="hover:bg-white/5">
                 <td className="px-4 py-3 text-white">
-                  <Link href={`/player/${stat.discord_id}`}>{stat.ign}</Link>
+                  <Link href={`/player/${stat.discord_id}`}>
+                    {stat.ign ?? "Unknown"}
+                  </Link>
                 </td>
-                <td className="px-4 py-3 text-white/70">{stat.team}</td>
+                <td className="px-4 py-3 text-white/70">{stat.team ?? "—"}</td>
+                <td className="px-4 py-3 text-white/70">{stat.mode}</td>
+                <td className="px-4 py-3 text-white">{stat.k}</td>
+                <td className="px-4 py-3 text-white/70">{stat.d}</td>
                 <td className="px-4 py-3 text-white/70">
-                  {stat.map_name} ({stat.mode})
+                  {stat.kd !== null ? stat.kd.toFixed(2) : "—"}
                 </td>
-                <td className="px-4 py-3 text-white">{stat.kills}</td>
-                <td className="px-4 py-3 text-white/70">{stat.deaths}</td>
-                <td className="px-4 py-3 text-white/70">{stat.assists}</td>
-                <td className="px-4 py-3 text-white/70">{stat.hp_time}s</td>
-                <td className="px-4 py-3 text-white/70">{stat.plants}</td>
-                <td className="px-4 py-3 text-white/70">{stat.defuses}</td>
+                <td className="px-4 py-3 text-white/70">
+                  {stat.hp_time !== null ? `${stat.hp_time}s` : "—"}
+                </td>
+                <td className="px-4 py-3 text-white/70">
+                  {stat.plants !== null ? stat.plants : "—"}
+                </td>
+                <td className="px-4 py-3 text-white/70">
+                  {stat.defuses !== null ? stat.defuses : "—"}
+                </td>
+                <td className="px-4 py-3 text-white/70">
+                  {stat.ticks !== null ? stat.ticks : "—"}
+                </td>
               </tr>
             ))}
           </tbody>

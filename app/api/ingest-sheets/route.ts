@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSheetId, getSheetsClient } from "@/lib/sheets";
-import type { Player } from "@/lib/types";
+import type { MapLog, MatchLog, Player, PlayerLogEntry } from "@/lib/types";
 import { hasDatabaseUrl } from "@/lib/db";
 import {
+  insertPlayerLogEntries,
   upsertMaps,
-  upsertPlayerMapStats,
   upsertPlayers,
   upsertSeries
 } from "@/lib/queries";
@@ -12,7 +12,7 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const PLAYERS_RANGE_FALLBACK = "Player OVR!A2:I";
+const PLAYERS_RANGE_FALLBACK = "Player OVR!A2:J";
 const SERIES_RANGE_FALLBACK = "Match Log!A2:I";
 const MAPS_RANGE_FALLBACK = "Map Log!A2:F";
 const PLAYER_LOG_RANGE_FALLBACK = "Player Log!A2:P";
@@ -65,12 +65,26 @@ const getHeaderRange = (range: string) => {
   return `${sheetName}!${startCol}1:${endCol}1`;
 };
 
-const toNumber = (value: unknown) => {
-  const numeric = typeof value === "number" ? value : Number(value ?? 0);
-  return Number.isNaN(numeric) ? 0 : numeric;
+const toNullableNumber = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string" && value.trim() === "") {
+    return null;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isNaN(numeric) ? null : numeric;
 };
 
-const toInteger = (value: unknown) => Math.round(toNumber(value));
+const toNullableInteger = (value: unknown) => {
+  const numeric = toNullableNumber(value);
+  return numeric === null ? null : Math.round(numeric);
+};
+
+const toRequiredInteger = (value: unknown) => {
+  const numeric = toNullableInteger(value);
+  return numeric ?? 0;
+};
 
 const uniqueByKey = <T>(items: T[], getKey: (item: T) => string) => {
   const seen = new Set<string>();
@@ -122,22 +136,63 @@ const normalizeMatchDate = (value: string) => {
   return null;
 };
 
+const allowedModes = ["Hardpoint", "SnD", "Control"] as const;
+
+const normalizeMode = (value: unknown) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const matched = allowedModes.find(
+    (mode) => mode.toLowerCase() === trimmed.toLowerCase()
+  );
+  return matched ?? null;
+};
+
+const parseRank = (value: unknown) => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { rank_value: null, rank_is_na: true };
+    }
+    if (trimmed.toLowerCase() === "na") {
+      return { rank_value: null, rank_is_na: true };
+    }
+    const numeric = Number(trimmed);
+    if (Number.isNaN(numeric) || numeric < 0.5 || numeric > 18.0) {
+      return { rank_value: null, rank_is_na: true };
+    }
+    return { rank_value: numeric, rank_is_na: false };
+  }
+  const numeric = toNullableNumber(value);
+  if (numeric === null || numeric < 0.5 || numeric > 18.0) {
+    return { rank_value: null, rank_is_na: true };
+  }
+  return { rank_value: numeric, rank_is_na: false };
+};
+
 const mapPlayerRow = (row: string[]): Player | null => {
-  if (row.length < 3) {
+  if (row.length < 2) {
     return null;
   }
 
-  const salary = toInteger(row[8]);
+  const rank = parseRank(row[4]);
+  const womensRank = toNullableNumber(row[9]);
 
   return {
+    discord_name: row[0] ?? null,
     discord_id: row[1] ?? "",
-    ign: row[2] ?? "",
-    rank: row[3] ?? "Unranked",
-    team: row[4] ?? "Unassigned",
-    status: row[5] ?? "inactive",
-    womens_status: row[6] ?? "inactive",
-    womens_team: row[7] || null,
-    salary
+    ign: row[2] ?? null,
+    rank_value: rank.rank_value,
+    rank_is_na: rank.rank_is_na,
+    team: row[5] ?? null,
+    status: row[6] ?? null,
+    women_status: row[7] ?? null,
+    womens_team: row[8] || null,
+    womens_rank: womensRank
   };
 };
 
@@ -205,19 +260,18 @@ export async function POST() {
         .map((row) => {
           const match_id = row[0] ?? "";
           const match_date = normalizeMatchDate(row[2] ?? "");
-          if (!match_id || !match_date) {
+          if (!match_id) {
             return null;
           }
           return {
             match_id,
             match_date,
-            division: row[3] ?? "",
-            home_team: row[4] ?? "",
-            away_team: row[5] ?? "",
-            home_wins: toInteger(row[6]),
-            away_wins: toInteger(row[7]),
-            series_winner: row[8] ?? ""
-          };
+            home_team: row[4] ?? null,
+            away_team: row[5] ?? null,
+            home_wins: toNullableInteger(row[6]),
+            away_wins: toNullableInteger(row[7]),
+            series_winner: row[8] ?? null
+          } satisfies MatchLog;
         })
         .filter((match): match is NonNullable<typeof match> => Boolean(match)),
       (match) => match.match_id
@@ -230,32 +284,30 @@ export async function POST() {
             row[
               getHeaderIndex(mapHeaderIndex, ["match id", "match_id"], 0)
             ] ?? "";
-          const map_number = toInteger(
+          const map_num = toRequiredInteger(
             row[
-              getHeaderIndex(mapHeaderIndex, ["map #", "map number"], 1)
+              getHeaderIndex(mapHeaderIndex, ["map #", "map number", "map_num"], 1)
             ]
           );
-          if (!match_id || !map_number) {
+          const mode = normalizeMode(
+            row[getHeaderIndex(mapHeaderIndex, ["mode", "game mode"], 2)]
+          );
+          if (!match_id || !map_num || !mode) {
             return null;
           }
-          const map_id = `${match_id}-${map_number}`;
           return {
-            id: map_id,
             match_id,
-            map_number,
-            map_name:
+            map_num,
+            mode,
+            map:
               row[
-                getHeaderIndex(mapHeaderIndex, ["map name", "map"], 2)
+                getHeaderIndex(mapHeaderIndex, ["map", "map name"], 3)
               ] ?? "",
-            mode:
-              row[
-                getHeaderIndex(mapHeaderIndex, ["mode", "game mode"], 3)
-              ] ?? "",
-            winning_team:
+            winner_team:
               row[
                 getHeaderIndex(
                   mapHeaderIndex,
-                  ["winning team", "winner"],
+                  ["winner team", "winning team", "winner"],
                   4
                 )
               ] ?? "",
@@ -267,81 +319,105 @@ export async function POST() {
                   5
                 )
               ] ?? ""
-          };
+          } satisfies MapLog;
         })
         .filter((map): map is NonNullable<typeof map> => Boolean(map)),
-      (map) => map.id
+      (map) => `${map.match_id}-${map.map_num}`
     );
 
-    const playerStats = uniqueByKey(
-      (playerLogValues ?? [])
-        .map((row) => {
-          const match_id =
-            row[
-              getHeaderIndex(playerLogHeaderIndex, ["match id", "match_id"], 0)
-            ] ?? "";
-          const discord_id =
-            row[
-              getHeaderIndex(
-                playerLogHeaderIndex,
-                ["discord id", "discord_id", "discord"],
-                6
-              )
-            ] ?? "";
-          const map_number = toInteger(
-            row[
-              getHeaderIndex(
-                playerLogHeaderIndex,
-                ["map #", "map number", "map_num", "map"],
-                14
-              )
-            ]
-          );
-          if (!match_id || !discord_id || !map_number) {
-            return null;
-          }
-          const map_id = `${match_id}-${map_number}`;
-          return {
-            id: `${match_id}-${map_number}-${discord_id}`,
-            match_id,
-            map_id,
-            discord_id,
-            kills: toInteger(
-              row[getHeaderIndex(playerLogHeaderIndex, ["kills", "k"], 8)]
-            ),
-            deaths: toInteger(
-              row[getHeaderIndex(playerLogHeaderIndex, ["deaths", "d"], 9)]
-            ),
-            assists: toInteger(
-              row[
-                getHeaderIndex(playerLogHeaderIndex, ["assists", "a"], 10)
-              ]
-            ),
-            hp_time: toInteger(
-              row[
-                getHeaderIndex(
-                  playerLogHeaderIndex,
-                  ["hp time", "hardpoint time", "hill time"],
-                  11
-                )
-              ]
-            ),
-            plants: toInteger(
-              row[getHeaderIndex(playerLogHeaderIndex, ["plants"], 12)]
-            ),
-            defuses: toInteger(
-              row[getHeaderIndex(playerLogHeaderIndex, ["defuses"], 13)]
+    const playerStats = (playerLogValues ?? [])
+      .map((row) => {
+        const match_id =
+          row[
+            getHeaderIndex(playerLogHeaderIndex, ["match id", "match_id"], 0)
+          ] ?? "";
+        const match_date = normalizeMatchDate(
+          row[getHeaderIndex(playerLogHeaderIndex, ["match date", "date"], 2)] ??
+            ""
+        );
+        const mode = normalizeMode(
+          row[getHeaderIndex(playerLogHeaderIndex, ["mode", "game mode"], 7)]
+        );
+        const discord_id =
+          row[
+            getHeaderIndex(
+              playerLogHeaderIndex,
+              ["discord id", "discord_id", "discord"],
+              6
             )
-          };
-        })
-        .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat)),
-      (stat) => stat.id
-    );
+          ] ?? "";
+        if (!match_id || !discord_id || !mode) {
+          return null;
+        }
+
+        const hp_time =
+          mode === "Hardpoint"
+            ? toNullableInteger(
+                row[
+                  getHeaderIndex(
+                    playerLogHeaderIndex,
+                    ["hp time", "hardpoint time", "hill time"],
+                    11
+                  )
+                ]
+              )
+            : null;
+        const plants =
+          mode === "SnD"
+            ? toNullableInteger(
+                row[getHeaderIndex(playerLogHeaderIndex, ["plants"], 12)]
+              )
+            : null;
+        const defuses =
+          mode === "SnD"
+            ? toNullableInteger(
+                row[getHeaderIndex(playerLogHeaderIndex, ["defuses"], 13)]
+              )
+            : null;
+        const ticks =
+          mode === "Control"
+            ? toNullableInteger(
+                row[getHeaderIndex(playerLogHeaderIndex, ["ticks"], 14)]
+              )
+            : null;
+
+        return {
+          match_id,
+          match_date,
+          team:
+            row[
+              getHeaderIndex(playerLogHeaderIndex, ["team", "team name"], 4)
+            ] ?? null,
+          player:
+            row[
+              getHeaderIndex(playerLogHeaderIndex, ["player", "player name"], 5)
+            ] ?? null,
+          discord_id,
+          mode,
+          k: toNullableInteger(
+            row[getHeaderIndex(playerLogHeaderIndex, ["k", "kills"], 8)]
+          ),
+          d: toNullableInteger(
+            row[getHeaderIndex(playerLogHeaderIndex, ["d", "deaths"], 9)]
+          ),
+          kd: toNullableNumber(
+            row[getHeaderIndex(playerLogHeaderIndex, ["kd", "k/d"], 10)]
+          ),
+          hp_time,
+          plants,
+          defuses,
+          ticks,
+          write_in:
+            row[getHeaderIndex(playerLogHeaderIndex, ["write in", "write_in"], 15)] ??
+            null
+        } satisfies PlayerLogEntry;
+      })
+      .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat));
 
     const upsertedPlayers = await upsertPlayers(players);
     const upsertedSeries = await upsertSeries(series);
     const upsertedMaps = await upsertMaps(maps);
-    const upsertedPlayerStats = await upsertPlayerMapStats(playerStats);
+    const insertedPlayerStats = await insertPlayerLogEntries(playerStats);
 
     return NextResponse.json({
       status: "ok",
@@ -361,7 +437,7 @@ export async function POST() {
         players: upsertedPlayers,
         series: upsertedSeries,
         maps: upsertedMaps,
-        playerStats: upsertedPlayerStats
+        playerStats: insertedPlayerStats
       }
     });
   } catch (error) {
