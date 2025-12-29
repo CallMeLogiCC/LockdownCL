@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { hasDatabaseUrl } from "@/lib/db";
-import { getPlayers } from "@/lib/queries";
+import { listPlayersWithStats } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,6 +13,6 @@ export async function GET() {
     );
   }
 
-  const players = await getPlayers();
+  const players = await listPlayersWithStats();
   return NextResponse.json({ players });
 }
