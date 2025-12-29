@@ -346,7 +346,7 @@ export async function getAllTeams(): Promise<string[]> {
     `
   );
 
-  return rows.map((row) => row.team_name as string);
+  return rows.map((row: { team_name: string }) => row.team_name);
 }
 
 export async function upsertPlayers(players: Player[]): Promise<number> {
