@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  getMapsBySeries,
-  getPlayerStatsBySeries,
-  getSeriesById
-} from "@/lib/queries";
+import { getMapsBySeries, getMatchPlayerRows, getSeriesById } from "@/lib/queries";
 import { hasDatabaseUrl } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +23,7 @@ export async function GET(
   }
 
   const maps = await getMapsBySeries(params.match_id);
-  const stats = await getPlayerStatsBySeries(params.match_id);
+  const stats = await getMatchPlayerRows(params.match_id);
 
   return NextResponse.json({ series: match, maps, stats });
 }
