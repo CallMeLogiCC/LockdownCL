@@ -70,6 +70,8 @@ const toNumber = (value: unknown) => {
   return Number.isNaN(numeric) ? 0 : numeric;
 };
 
+const toInteger = (value: unknown) => Math.round(toNumber(value));
+
 const uniqueByKey = <T>(items: T[], getKey: (item: T) => string) => {
   const seen = new Set<string>();
   return items.filter((item) => {
@@ -125,7 +127,7 @@ const mapPlayerRow = (row: string[]): Player | null => {
     return null;
   }
 
-  const salary = toNumber(row[8]);
+  const salary = toInteger(row[8]);
 
   return {
     discord_id: row[1] ?? "",
@@ -212,8 +214,8 @@ export async function POST() {
             division: row[3] ?? "",
             home_team: row[4] ?? "",
             away_team: row[5] ?? "",
-            home_wins: toNumber(row[6]),
-            away_wins: toNumber(row[7]),
+            home_wins: toInteger(row[6]),
+            away_wins: toInteger(row[7]),
             series_winner: row[8] ?? ""
           };
         })
@@ -228,7 +230,7 @@ export async function POST() {
             row[
               getHeaderIndex(mapHeaderIndex, ["match id", "match_id"], 0)
             ] ?? "";
-          const map_number = toNumber(
+          const map_number = toInteger(
             row[
               getHeaderIndex(mapHeaderIndex, ["map #", "map number"], 1)
             ]
@@ -286,7 +288,7 @@ export async function POST() {
                 6
               )
             ] ?? "";
-          const map_number = toNumber(
+          const map_number = toInteger(
             row[
               getHeaderIndex(
                 playerLogHeaderIndex,
@@ -304,18 +306,18 @@ export async function POST() {
             match_id,
             map_id,
             discord_id,
-            kills: toNumber(
+            kills: toInteger(
               row[getHeaderIndex(playerLogHeaderIndex, ["kills", "k"], 8)]
             ),
-            deaths: toNumber(
+            deaths: toInteger(
               row[getHeaderIndex(playerLogHeaderIndex, ["deaths", "d"], 9)]
             ),
-            assists: toNumber(
+            assists: toInteger(
               row[
                 getHeaderIndex(playerLogHeaderIndex, ["assists", "a"], 10)
               ]
             ),
-            hp_time: toNumber(
+            hp_time: toInteger(
               row[
                 getHeaderIndex(
                   playerLogHeaderIndex,
@@ -324,10 +326,10 @@ export async function POST() {
                 )
               ]
             ),
-            plants: toNumber(
+            plants: toInteger(
               row[getHeaderIndex(playerLogHeaderIndex, ["plants"], 12)]
             ),
-            defuses: toNumber(
+            defuses: toInteger(
               row[getHeaderIndex(playerLogHeaderIndex, ["defuses"], 13)]
             )
           };
