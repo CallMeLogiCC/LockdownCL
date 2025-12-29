@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { hasDatabaseUrl } from "@/lib/db";
-import { getPlayerById, getPlayerStatsByPlayer } from "@/lib/queries";
+import {
+  getPlayerById,
+  getPlayerMatchSummaries,
+  getPlayerModeStats,
+  getPlayerTotals
+} from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,7 +27,11 @@ export async function GET(
     return NextResponse.json({ error: "Player not found" }, { status: 404 });
   }
 
-  const stats = await getPlayerStatsByPlayer(params.discord_id);
+  const [totals, modes, matches] = await Promise.all([
+    getPlayerTotals(params.discord_id),
+    getPlayerModeStats(params.discord_id),
+    getPlayerMatchSummaries(params.discord_id)
+  ]);
 
-  return NextResponse.json({ player, stats });
+  return NextResponse.json({ player, totals, modes, matches });
 }
