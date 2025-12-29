@@ -1,53 +1,67 @@
-import type { Map, Player, PlayerMapStat, Series } from "@/lib/types";
+import type {
+  MapLog,
+  MatchLog,
+  Player,
+  PlayerLogEntry,
+  PlayerModeStat,
+  SeriesPlayerStat
+} from "@/lib/types";
 
 export const players: Player[] = [
   {
+    discord_name: "Shadowbyte#0001",
     discord_id: "185201",
     ign: "Shadowbyte",
-    rank: "Challenger",
+    rank_value: 15.5,
+    rank_is_na: false,
     team: "Rift Hawks",
     status: "active",
-    womens_status: "inactive",
+    women_status: "inactive",
     womens_team: null,
-    salary: 450
+    womens_rank: null
   },
   {
+    discord_name: "Nova#0002",
     discord_id: "185202",
     ign: "Nova",
-    rank: "Diamond",
+    rank_value: 12.5,
+    rank_is_na: false,
     team: "Nova Core",
     status: "active",
-    womens_status: "active",
+    women_status: "active",
     womens_team: "Nova Core",
-    salary: 375
+    womens_rank: 12.0
   },
   {
+    discord_name: "Raven#0003",
     discord_id: "185203",
     ign: "Raven",
-    rank: "Platinum",
+    rank_value: 10.5,
+    rank_is_na: false,
     team: "Pulse Unit",
     status: "active",
-    womens_status: "inactive",
+    women_status: "inactive",
     womens_team: null,
-    salary: 310
+    womens_rank: null
   },
   {
+    discord_name: "Cipher#0004",
     discord_id: "185204",
     ign: "Cipher",
-    rank: "Diamond",
+    rank_value: 12.5,
+    rank_is_na: false,
     team: "Rift Hawks",
     status: "active",
-    womens_status: "inactive",
+    women_status: "inactive",
     womens_team: null,
-    salary: 360
+    womens_rank: null
   }
 ];
 
-export const series: Series[] = [
+export const series: MatchLog[] = [
   {
     match_id: "match-001",
     match_date: "2024-04-12",
-    division: "Premier",
     home_team: "Rift Hawks",
     away_team: "Nova Core",
     home_wins: 3,
@@ -57,7 +71,6 @@ export const series: Series[] = [
   {
     match_id: "match-002",
     match_date: "2024-04-19",
-    division: "Premier",
     home_team: "Pulse Unit",
     away_team: "Rift Hawks",
     home_wins: 1,
@@ -66,129 +79,153 @@ export const series: Series[] = [
   }
 ];
 
-export const maps: Map[] = [
+export const maps: MapLog[] = [
   {
-    id: "map-001",
     match_id: "match-001",
-    map_number: 1,
-    map_name: "Hardpoint - Embassy",
+    map_num: 1,
+    map: "Embassy",
     mode: "Hardpoint",
-    winning_team: "Rift Hawks",
+    winner_team: "Rift Hawks",
     losing_team: "Nova Core"
   },
   {
-    id: "map-002",
     match_id: "match-001",
-    map_number: 2,
-    map_name: "Search - Mercado",
-    mode: "Search",
-    winning_team: "Nova Core",
+    map_num: 2,
+    map: "Mercado",
+    mode: "SnD",
+    winner_team: "Nova Core",
     losing_team: "Rift Hawks"
   },
   {
-    id: "map-003",
     match_id: "match-001",
-    map_number: 3,
-    map_name: "Control - Expo",
+    map_num: 3,
+    map: "Expo",
     mode: "Control",
-    winning_team: "Rift Hawks",
+    winner_team: "Rift Hawks",
     losing_team: "Nova Core"
   },
   {
-    id: "map-004",
     match_id: "match-002",
-    map_number: 1,
-    map_name: "Hardpoint - Hotel",
+    map_num: 1,
+    map: "Hotel",
     mode: "Hardpoint",
-    winning_team: "Rift Hawks",
+    winner_team: "Rift Hawks",
     losing_team: "Pulse Unit"
   }
 ];
 
-export const playerMapStats: PlayerMapStat[] = [
+export const playerLog: PlayerLogEntry[] = [
   {
-    id: "stat-001",
     match_id: "match-001",
-    map_id: "map-001",
+    match_date: "2024-04-12",
+    team: "Rift Hawks",
+    player: "Shadowbyte",
     discord_id: "185201",
-    kills: 28,
-    deaths: 21,
-    assists: 9,
+    mode: "Hardpoint",
+    k: 28,
+    d: 21,
+    kd: 1.33,
     hp_time: 85,
-    plants: 0,
-    defuses: 0
+    plants: null,
+    defuses: null,
+    ticks: null,
+    write_in: null
   },
   {
-    id: "stat-002",
     match_id: "match-001",
-    map_id: "map-001",
+    match_date: "2024-04-12",
+    team: "Nova Core",
+    player: "Nova",
     discord_id: "185202",
-    kills: 24,
-    deaths: 25,
-    assists: 11,
+    mode: "Hardpoint",
+    k: 24,
+    d: 25,
+    kd: 0.96,
     hp_time: 77,
-    plants: 0,
-    defuses: 0
+    plants: null,
+    defuses: null,
+    ticks: null,
+    write_in: null
   },
   {
-    id: "stat-003",
     match_id: "match-001",
-    map_id: "map-002",
+    match_date: "2024-04-12",
+    team: "Rift Hawks",
+    player: "Shadowbyte",
     discord_id: "185201",
-    kills: 10,
-    deaths: 8,
-    assists: 4,
-    hp_time: 0,
+    mode: "SnD",
+    k: 10,
+    d: 8,
+    kd: 1.25,
+    hp_time: null,
     plants: 1,
-    defuses: 0
+    defuses: 0,
+    ticks: null,
+    write_in: null
   },
   {
-    id: "stat-004",
     match_id: "match-001",
-    map_id: "map-002",
+    match_date: "2024-04-12",
+    team: "Nova Core",
+    player: "Nova",
     discord_id: "185202",
-    kills: 12,
-    deaths: 10,
-    assists: 3,
-    hp_time: 0,
+    mode: "SnD",
+    k: 12,
+    d: 10,
+    kd: 1.2,
+    hp_time: null,
     plants: 2,
-    defuses: 1
+    defuses: 1,
+    ticks: null,
+    write_in: null
   },
   {
-    id: "stat-005",
     match_id: "match-001",
-    map_id: "map-003",
+    match_date: "2024-04-12",
+    team: "Pulse Unit",
+    player: "Raven",
     discord_id: "185203",
-    kills: 18,
-    deaths: 15,
-    assists: 7,
-    hp_time: 30,
-    plants: 1,
-    defuses: 1
+    mode: "Control",
+    k: 18,
+    d: 15,
+    kd: 1.2,
+    hp_time: null,
+    plants: null,
+    defuses: null,
+    ticks: 30,
+    write_in: null
   },
   {
-    id: "stat-006",
     match_id: "match-001",
-    map_id: "map-003",
+    match_date: "2024-04-12",
+    team: "Rift Hawks",
+    player: "Cipher",
     discord_id: "185204",
-    kills: 22,
-    deaths: 17,
-    assists: 6,
-    hp_time: 45,
-    plants: 0,
-    defuses: 0
+    mode: "Control",
+    k: 22,
+    d: 17,
+    kd: 1.29,
+    hp_time: null,
+    plants: null,
+    defuses: null,
+    ticks: 45,
+    write_in: null
   },
   {
-    id: "stat-007",
     match_id: "match-002",
-    map_id: "map-004",
+    match_date: "2024-04-19",
+    team: "Rift Hawks",
+    player: "Cipher",
     discord_id: "185204",
-    kills: 26,
-    deaths: 19,
-    assists: 8,
+    mode: "Hardpoint",
+    k: 26,
+    d: 19,
+    kd: 1.37,
     hp_time: 90,
-    plants: 0,
-    defuses: 0
+    plants: null,
+    defuses: null,
+    ticks: null,
+    write_in: null
   }
 ];
 
@@ -201,8 +238,57 @@ export const getSeriesById = (matchId: string) =>
 export const getMapsBySeries = (matchId: string) =>
   maps.filter((map) => map.match_id === matchId);
 
-export const getPlayerStatsByPlayer = (discordId: string) =>
-  playerMapStats.filter((stat) => stat.discord_id === discordId);
+const aggregatePlayerStats = (stats: PlayerLogEntry[]): PlayerModeStat[] => {
+  const grouped = new Map<string, PlayerModeStat>();
+  stats.forEach((stat) => {
+    const key = `${stat.discord_id}-${stat.mode}`;
+    const existing = grouped.get(key) ?? {
+      discord_id: stat.discord_id,
+      mode: stat.mode,
+      k: 0,
+      d: 0,
+      kd: null,
+      hp_time: null,
+      plants: null,
+      defuses: null,
+      ticks: null
+    };
 
-export const getPlayerStatsBySeries = (matchId: string) =>
-  playerMapStats.filter((stat) => stat.match_id === matchId);
+    existing.k += stat.k ?? 0;
+    existing.d += stat.d ?? 0;
+    if (stat.mode === "Hardpoint") {
+      existing.hp_time = (existing.hp_time ?? 0) + (stat.hp_time ?? 0);
+    }
+    if (stat.mode === "SnD") {
+      existing.plants = (existing.plants ?? 0) + (stat.plants ?? 0);
+      existing.defuses = (existing.defuses ?? 0) + (stat.defuses ?? 0);
+    }
+    if (stat.mode === "Control") {
+      existing.ticks = (existing.ticks ?? 0) + (stat.ticks ?? 0);
+    }
+
+    if (existing.d > 0) {
+      existing.kd = Number((existing.k / existing.d).toFixed(2));
+    }
+
+    grouped.set(key, existing);
+  });
+
+  return Array.from(grouped.values());
+};
+
+export const getPlayerStatsByPlayer = (discordId: string) =>
+  aggregatePlayerStats(playerLog.filter((stat) => stat.discord_id === discordId));
+
+export const getPlayerStatsBySeries = (matchId: string): SeriesPlayerStat[] => {
+  const stats = playerLog.filter((stat) => stat.match_id === matchId);
+  const aggregated = aggregatePlayerStats(stats);
+  return aggregated.map((stat) => {
+    const player = players.find((entry) => entry.discord_id === stat.discord_id);
+    return {
+      ...stat,
+      ign: player?.ign ?? null,
+      team: player?.team ?? null
+    };
+  });
+};

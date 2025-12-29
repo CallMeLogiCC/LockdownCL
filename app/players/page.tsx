@@ -16,6 +16,13 @@ export default async function PlayersPage() {
 
   const players = await getPlayers();
 
+  const formatRank = (player: (typeof players)[number]) => {
+    if (player.rank_is_na) {
+      return "NA";
+    }
+    return player.rank_value !== null ? player.rank_value : "NA";
+  };
+
   return (
     <section className="flex flex-col gap-6">
       <div>
@@ -35,9 +42,11 @@ export default async function PlayersPage() {
           <tbody className="divide-y divide-white/10">
             {players.map((player) => (
               <tr key={player.discord_id} className="hover:bg-white/5">
-                <td className="px-4 py-3 font-semibold text-white">{player.ign}</td>
-                <td className="px-4 py-3 text-white/70">{player.team}</td>
-                <td className="px-4 py-3 text-white/70">{player.rank}</td>
+                <td className="px-4 py-3 font-semibold text-white">
+                  {player.ign ?? "Unknown"}
+                </td>
+                <td className="px-4 py-3 text-white/70">{player.team ?? "—"}</td>
+                <td className="px-4 py-3 text-white/70">{formatRank(player)}</td>
                 <td className="px-4 py-3">
                   <Link href={`/player/${player.discord_id}`}>View profile</Link>
                 </td>
