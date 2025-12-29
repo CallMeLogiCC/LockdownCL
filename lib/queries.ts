@@ -148,3 +148,127 @@ export async function upsertPlayers(players: Player[]): Promise<number> {
   const result = await getPool().query(query, values);
   return result.rowCount ?? 0;
 }
+
+export async function upsertSeries(series: Series[]): Promise<number> {
+  if (series.length === 0) {
+    return 0;
+  }
+
+  const values: Array<string | number> = [];
+  const rows = series.map((match, index) => {
+    const offset = index * 8;
+    values.push(
+      match.match_id,
+      match.match_date,
+      match.division,
+      match.home_team,
+      match.away_team,
+      match.home_wins,
+      match.away_wins,
+      match.series_winner
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
+  });
+
+  const query = `
+    insert into series
+      (match_id, match_date, division, home_team, away_team, home_wins, away_wins, series_winner)
+    values ${rows.join(", ")}
+    on conflict (match_id)
+    do update set
+      match_date = excluded.match_date,
+      division = excluded.division,
+      home_team = excluded.home_team,
+      away_team = excluded.away_team,
+      home_wins = excluded.home_wins,
+      away_wins = excluded.away_wins,
+      series_winner = excluded.series_winner
+  `;
+
+  const result = await getPool().query(query, values);
+  return result.rowCount ?? 0;
+}
+
+export async function upsertMaps(maps: Map[]): Promise<number> {
+  if (maps.length === 0) {
+    return 0;
+  }
+
+  const values: Array<string | number> = [];
+  const rows = maps.map((map, index) => {
+    const offset = index * 7;
+    values.push(
+      map.id,
+      map.match_id,
+      map.map_number,
+      map.map_name,
+      map.mode,
+      map.winning_team,
+      map.losing_team
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`;
+  });
+
+  const query = `
+    insert into maps
+      (id, match_id, map_number, map_name, mode, winning_team, losing_team)
+    values ${rows.join(", ")}
+    on conflict (id)
+    do update set
+      match_id = excluded.match_id,
+      map_number = excluded.map_number,
+      map_name = excluded.map_name,
+      mode = excluded.mode,
+      winning_team = excluded.winning_team,
+      losing_team = excluded.losing_team
+  `;
+
+  const result = await getPool().query(query, values);
+  return result.rowCount ?? 0;
+}
+
+export async function upsertPlayerMapStats(
+  stats: PlayerMapStat[]
+): Promise<number> {
+  if (stats.length === 0) {
+    return 0;
+  }
+
+  const values: Array<string | number> = [];
+  const rows = stats.map((stat, index) => {
+    const offset = index * 10;
+    values.push(
+      stat.id,
+      stat.match_id,
+      stat.map_id,
+      stat.discord_id,
+      stat.kills,
+      stat.deaths,
+      stat.assists,
+      stat.hp_time,
+      stat.plants,
+      stat.defuses
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`;
+  });
+
+  const query = `
+    insert into player_map_stats
+      (id, match_id, map_id, discord_id, kills, deaths, assists, hp_time, plants, defuses)
+    values ${rows.join(", ")}
+    on conflict (id)
+    do update set
+      match_id = excluded.match_id,
+      map_id = excluded.map_id,
+      discord_id = excluded.discord_id,
+      kills = excluded.kills,
+      deaths = excluded.deaths,
+      assists = excluded.assists,
+      hp_time = excluded.hp_time,
+      plants = excluded.plants,
+      defuses = excluded.defuses
+  `;
+
+  const result = await getPool().query(query, values);
+  return result.rowCount ?? 0;
+}
