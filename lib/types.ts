@@ -263,3 +263,60 @@ export type StandingRow = {
   map_losses: number;
   map_diff: number;
 };
+
+export type PlayerTotals = {
+  total_k: number;
+  total_d: number;
+  ovr_kd: number | null;
+};
+
+export type PlayerMatchSummary = {
+  match_id: string;
+  match_date: string | null;
+  home_team: string | null;
+  away_team: string | null;
+  home_wins: number | null;
+  away_wins: number | null;
+};
+
+export type PlayerMatchModeStat = {
+  match_id: string;
+  mode: string;
+  k: number;
+  d: number;
+  kd: number | null;
+  hp_time: number | null;
+  plants: number | null;
+  defuses: number | null;
+  ticks: number | null;
+};
+
+export type MatchPlayerRow = {
+  match_id: string;
+  mode: string;
+  player: string | null;
+  discord_id: string;
+  team: string | null;
+  k: number | null;
+  d: number | null;
+  kd: number | null;
+  hp_time: number | null;
+  plants: number | null;
+  defuses: number | null;
+  ticks: number | null;
+};
+
+export type TeamModeWinRateRow = {
+  mode: string;
+  wins: number;
+  total: number;
+};
+
+export type StandingRow = {
+  team: string;
+  series_wins: number;
+  series_losses: number;
+  map_wins: number;
+  map_losses: number;
+  map_diff: number;
+};
