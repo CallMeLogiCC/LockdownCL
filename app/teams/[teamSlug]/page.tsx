@@ -8,7 +8,7 @@ import {
   getTeamRoster
 } from "@/lib/queries";
 import { findTeamBySlug } from "@/lib/slug";
-import type { MatchLog, PlayerWithStats, TeamModeWinRate } from "@/lib/types";
+import type { MatchLog, PlayerWithStats, TeamModeWinRateRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +79,7 @@ const computeTeamRecord = (team: string, matches: MatchLog[]) => {
   };
 };
 
-const getModeWinDisplay = (mode: string, rates: TeamModeWinRate[]) => {
+const getModeWinDisplay = (mode: string, rates: TeamModeWinRateRow[]) => {
   const entry = rates.find((rate) => rate.mode === mode);
   if (!entry || entry.total === 0) {
     return "—";

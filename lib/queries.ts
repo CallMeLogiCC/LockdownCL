@@ -10,7 +10,7 @@ import type {
   PlayerModeStat,
   PlayerTotals,
   PlayerWithStats,
-  TeamModeWinRate
+  TeamModeWinRateRow
 } from "@/lib/types";
 
 export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
@@ -314,7 +314,7 @@ export async function getTeamRoster(team: string): Promise<PlayerWithStats[]> {
   return rows as PlayerWithStats[];
 }
 
-export async function getTeamModeWinRates(team: string): Promise<TeamModeWinRate[]> {
+export async function getTeamModeWinRates(team: string): Promise<TeamModeWinRateRow[]> {
   const { rows } = await getPool().query(
     `
     select
@@ -329,7 +329,7 @@ export async function getTeamModeWinRates(team: string): Promise<TeamModeWinRate
     [team]
   );
 
-  return rows as TeamModeWinRate[];
+  return rows as TeamModeWinRateRow[];
 }
 
 export async function getAllTeams(): Promise<string[]> {
