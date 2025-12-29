@@ -25,6 +25,18 @@ const toNumber = (value: unknown) => {
   return Number.isNaN(numeric) ? 0 : numeric;
 };
 
+const uniqueByKey = <T>(items: T[], getKey: (item: T) => string) => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
 const mapPlayerRow = (row: string[]): Player | null => {
   if (row.length < 3) {
     return null;
@@ -75,69 +87,78 @@ export async function POST() {
       .map((row) => mapPlayerRow(row as string[]))
       .filter((player): player is Player => Boolean(player?.discord_id));
 
-    const series = (seriesValues ?? [])
-      .map((row) => {
-        const match_id = row[0] ?? "";
-        const match_date = row[2] ?? "";
-        if (!match_id || !match_date) {
-          return null;
-        }
-        return {
-          match_id,
-          match_date,
-          division: row[3] ?? "",
-          home_team: row[4] ?? "",
-          away_team: row[5] ?? "",
-          home_wins: toNumber(row[6]),
-          away_wins: toNumber(row[7]),
-          series_winner: row[8] ?? ""
-        };
-      })
-      .filter((match): match is NonNullable<typeof match> => Boolean(match));
+    const series = uniqueByKey(
+      (seriesValues ?? [])
+        .map((row) => {
+          const match_id = row[0] ?? "";
+          const match_date = row[2] ?? "";
+          if (!match_id || !match_date) {
+            return null;
+          }
+          return {
+            match_id,
+            match_date,
+            division: row[3] ?? "",
+            home_team: row[4] ?? "",
+            away_team: row[5] ?? "",
+            home_wins: toNumber(row[6]),
+            away_wins: toNumber(row[7]),
+            series_winner: row[8] ?? ""
+          };
+        })
+        .filter((match): match is NonNullable<typeof match> => Boolean(match)),
+      (match) => match.match_id
+    );
 
-    const maps = (mapValues ?? [])
-      .map((row) => {
-        const match_id = row[0] ?? "";
-        const map_number = toNumber(row[1]);
-        if (!match_id || !map_number) {
-          return null;
-        }
-        const map_id = `${match_id}-${map_number}`;
-        return {
-          id: map_id,
-          match_id,
-          map_number,
-          mode: row[2] ?? "",
-          map_name: row[3] ?? "",
-          winning_team: row[4] ?? "",
-          losing_team: row[5] ?? ""
-        };
-      })
-      .filter((map): map is NonNullable<typeof map> => Boolean(map));
+    const maps = uniqueByKey(
+      (mapValues ?? [])
+        .map((row) => {
+          const match_id = row[0] ?? "";
+          const map_number = toNumber(row[1]);
+          if (!match_id || !map_number) {
+            return null;
+          }
+          const map_id = `${match_id}-${map_number}`;
+          return {
+            id: map_id,
+            match_id,
+            map_number,
+            mode: row[2] ?? "",
+            map_name: row[3] ?? "",
+            winning_team: row[4] ?? "",
+            losing_team: row[5] ?? ""
+          };
+        })
+        .filter((map): map is NonNullable<typeof map> => Boolean(map)),
+      (map) => map.id
+    );
 
-    const playerStats = (playerLogValues ?? [])
-      .map((row) => {
-        const match_id = row[0] ?? "";
-        const discord_id = row[6] ?? "";
-        const map_number = toNumber(row[14]);
-        if (!match_id || !discord_id || !map_number) {
-          return null;
-        }
-        const map_id = `${match_id}-${map_number}`;
-        return {
-          id: `${match_id}-${map_number}-${discord_id}`,
-          match_id,
-          map_id,
-          discord_id,
-          kills: toNumber(row[8]),
-          deaths: toNumber(row[9]),
-          assists: 0,
-          hp_time: toNumber(row[11]),
-          plants: toNumber(row[12]),
-          defuses: toNumber(row[13])
-        };
-      })
-      .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat));
+    const playerStats = uniqueByKey(
+      (playerLogValues ?? [])
+        .map((row) => {
+          const match_id = row[0] ?? "";
+          const discord_id = row[6] ?? "";
+          const map_number = toNumber(row[14]);
+          if (!match_id || !discord_id || !map_number) {
+            return null;
+          }
+          const map_id = `${match_id}-${map_number}`;
+          return {
+            id: `${match_id}-${map_number}-${discord_id}`,
+            match_id,
+            map_id,
+            discord_id,
+            kills: toNumber(row[8]),
+            deaths: toNumber(row[9]),
+            assists: 0,
+            hp_time: toNumber(row[11]),
+            plants: toNumber(row[12]),
+            defuses: toNumber(row[13])
+          };
+        })
+        .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat)),
+      (stat) => stat.id
+    );
 
     const upsertedPlayers = await upsertPlayers(players);
     const upsertedSeries = await upsertSeries(series);
