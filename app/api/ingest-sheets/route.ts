@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSheetId, getSheetRange, getSheetsClient } from "@/lib/sheets";
+import { getSheetId, getSheetsClient } from "@/lib/sheets";
 import type { Player } from "@/lib/types";
 import { hasDatabaseUrl } from "@/lib/db";
 import {
@@ -55,10 +55,7 @@ export async function POST() {
   try {
     const sheets = getSheetsClient();
     const sheetId = getSheetId();
-    const playerRange = getRange(
-      "SHEET_RANGE_PLAYERS",
-      getSheetRange(PLAYERS_RANGE_FALLBACK)
-    );
+    const playerRange = getRange("SHEET_RANGE_PLAYERS", PLAYERS_RANGE_FALLBACK);
     const seriesRange = getRange("SHEET_RANGE_SERIES", SERIES_RANGE_FALLBACK);
     const mapsRange = getRange("SHEET_RANGE_MAPS", MAPS_RANGE_FALLBACK);
     const playerLogRange = getRange(
