@@ -54,6 +54,7 @@ export type PlayerLogEntry = {
 };
 
 export type PlayerModeStat = {
+  discord_id?: string;
   mode: string;
   k: number;
   d: number;
@@ -62,6 +63,34 @@ export type PlayerModeStat = {
   plants: number | null;
   defuses: number | null;
   ticks: number | null;
+};
+
+export type SeriesPlayerStat = PlayerModeStat & {
+  discord_id: string;
+  ign: string | null;
+  team: string | null;
+  k: number | null;
+  d: number | null;
+  kd: number | null;
+  hp_time: number | null;
+  plants: number | null;
+  defuses: number | null;
+  ticks: number | null;
+};
+
+export type TeamModeWinRate = {
+  mode: string;
+  wins: number;
+  total: number;
+};
+
+export type StandingRow = {
+  team: string;
+  series_wins: number;
+  series_losses: number;
+  map_wins: number;
+  map_losses: number;
+  map_diff: number;
 };
 
 export type PlayerTotals = {
