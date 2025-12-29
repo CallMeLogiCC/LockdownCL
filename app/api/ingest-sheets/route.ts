@@ -37,6 +37,44 @@ const uniqueByKey = <T>(items: T[], getKey: (item: T) => string) => {
   });
 };
 
+const formatDateParts = (year: number, month: number, day: number) => {
+  const monthValue = `${month}`.padStart(2, "0");
+  const dayValue = `${day}`.padStart(2, "0");
+  return `${year}-${monthValue}-${dayValue}`;
+};
+
+const normalizeMatchDate = (value: string) => {
+  const raw = value.trim();
+  if (!raw) {
+    return null;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+
+  const monthDayMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})$/);
+  if (monthDayMatch) {
+    const currentYear = new Date().getFullYear();
+    const month = Number(monthDayMatch[1]);
+    const day = Number(monthDayMatch[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return formatDateParts(currentYear, month, day);
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return formatDateParts(
+      parsed.getFullYear(),
+      parsed.getMonth() + 1,
+      parsed.getDate()
+    );
+  }
+
+  return null;
+};
+
 const mapPlayerRow = (row: string[]): Player | null => {
   if (row.length < 3) {
     return null;
@@ -91,7 +129,7 @@ export async function POST() {
       (seriesValues ?? [])
         .map((row) => {
           const match_id = row[0] ?? "";
-          const match_date = row[2] ?? "";
+          const match_date = normalizeMatchDate(row[2] ?? "");
           if (!match_id || !match_date) {
             return null;
           }
