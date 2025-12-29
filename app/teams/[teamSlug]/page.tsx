@@ -12,11 +12,15 @@ import type { MatchLog, PlayerWithStats, TeamModeWinRateRow } from "@/lib/types"
 
 export const dynamic = "force-dynamic";
 
-const formatRank = (rankValue: number | null, isNa: boolean) => {
+const formatRank = (rankValue: number | string | null, isNa: boolean) => {
   if (isNa || rankValue === null) {
     return "NA";
   }
-  return rankValue.toFixed(1);
+  const parsed = typeof rankValue === "number" ? rankValue : Number(rankValue);
+  if (Number.isNaN(parsed)) {
+    return "NA";
+  }
+  return parsed.toFixed(1);
 };
 
 const formatKd = (kills: number, deaths: number) => {

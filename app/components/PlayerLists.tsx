@@ -19,11 +19,15 @@ import { slugifyTeam } from "@/lib/slug";
 
 const formatIgn = (ign: string | null) => (ign && ign.trim() ? ign : "N/A");
 
-const formatRank = (rankValue: number | null, isNa: boolean) => {
+const formatRank = (rankValue: number | string | null, isNa: boolean) => {
   if (isNa || rankValue === null) {
     return "NA";
   }
-  return rankValue.toFixed(1);
+  const parsed = typeof rankValue === "number" ? rankValue : Number(rankValue);
+  if (Number.isNaN(parsed)) {
+    return "NA";
+  }
+  return parsed.toFixed(1);
 };
 
 const formatKd = (kills: number, deaths: number) => {
