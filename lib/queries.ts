@@ -1,10 +1,15 @@
+import { cache } from "react";
 import { getPool } from "@/lib/db";
 import type {
   MapLog,
   MatchLog,
   MatchPlayerRow,
   Player,
+  PlayerAggregates,
   PlayerLogEntry,
+  PlayerLogRow,
+  PlayerMapBreakdown,
+  PlayerMatchHistoryEntry,
   PlayerMatchModeStat,
   PlayerMatchSummary,
   PlayerModeStat,
@@ -47,6 +52,350 @@ export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
   );
 
   return rows as PlayerWithStats[];
+}
+
+const MAP_LISTS: Record<string, string[]> = {
+  Hardpoint: ["Blackheart", "Colossus", "Den", "Exposure", "Scar"],
+  SnD: ["Raid", "Colossus", "Den", "Exposure", "Scar"],
+  Control: ["Den", "Exposure", "Scar"]
+};
+
+const getPlayerPageBaseData = cache(async (discordId: string) => {
+  const { rows: playerRows } = await getPool().query(
+    `
+    select
+      id,
+      match_id,
+      match_date,
+      team,
+      player,
+      discord_id,
+      mode,
+      k,
+      d,
+      kd,
+      hp_time,
+      plants,
+      defuses,
+      ticks,
+      write_in
+    from player_log
+    where discord_id = $1
+    order by match_id, mode, id
+    `,
+    [discordId]
+  );
+
+  const playerLogs = playerRows as PlayerLogRow[];
+  const matchIds = Array.from(new Set(playerLogs.map((row) => row.match_id)));
+
+  if (matchIds.length === 0) {
+    return {
+      playerLogs,
+      matchLogs: [] as MatchLog[],
+      mapLogs: [] as MapLog[],
+      matchIds
+    };
+  }
+
+  const [{ rows: matchRows }, { rows: mapRows }] = await Promise.all([
+    getPool().query(
+      `
+      select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner
+      from match_log
+      where match_id = any($1::text[])
+      order by match_date desc nulls last, match_id desc
+      `,
+      [matchIds]
+    ),
+    getPool().query(
+      `
+      select match_id, map_num, mode, map, winner_team, losing_team
+      from map_log
+      where match_id = any($1::text[])
+      order by match_id, map_num
+      `,
+      [matchIds]
+    )
+  ]);
+
+  return {
+    playerLogs,
+    matchLogs: matchRows as MatchLog[],
+    mapLogs: mapRows as MapLog[],
+    matchIds
+  };
+});
+
+const getMatchTeamMap = (playerLogs: PlayerLogRow[]) => {
+  const matchTeams = new Map<string, string>();
+  playerLogs.forEach((row) => {
+    if (row.team && !matchTeams.has(row.match_id)) {
+      matchTeams.set(row.match_id, row.team);
+    }
+  });
+  return matchTeams;
+};
+
+const buildModeKey = (matchId: string, mode: string) => `${matchId}__${mode}`;
+
+const buildPlayerLogsByMatchMode = (playerLogs: PlayerLogRow[]) => {
+  const grouped = new Map<string, PlayerLogRow[]>();
+  playerLogs.forEach((row) => {
+    const key = buildModeKey(row.match_id, row.mode);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key)?.push(row);
+  });
+  return grouped;
+};
+
+const buildMapLogsByMatchMode = (mapLogs: MapLog[]) => {
+  const grouped = new Map<string, MapLog[]>();
+  mapLogs.forEach((row) => {
+    const key = buildModeKey(row.match_id, row.mode);
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key)?.push(row);
+  });
+  return grouped;
+};
+
+export async function getPlayerProfile(discordId: string): Promise<Player | null> {
+  return getPlayerById(discordId);
+}
+
+export async function getPlayerAggregates(discordId: string): Promise<PlayerAggregates> {
+  const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
+  const matchTeams = getMatchTeamMap(playerLogs);
+
+  const totals = playerLogs.reduce(
+    (acc, row) => {
+      acc.kills += row.k ?? 0;
+      acc.deaths += row.d ?? 0;
+      return acc;
+    },
+    { kills: 0, deaths: 0 }
+  );
+
+  const modes: PlayerAggregates["modes"] = {};
+  playerLogs.forEach((row) => {
+    if (!modes[row.mode]) {
+      modes[row.mode] = { kills: 0, deaths: 0, map_wins: 0, map_losses: 0 };
+    }
+    modes[row.mode].kills += row.k ?? 0;
+    modes[row.mode].deaths += row.d ?? 0;
+  });
+
+  let seriesWins = 0;
+  let seriesLosses = 0;
+
+  matchLogs.forEach((match) => {
+    const team = matchTeams.get(match.match_id);
+    if (!team) {
+      return;
+    }
+    const homeWins = match.home_wins ?? 0;
+    const awayWins = match.away_wins ?? 0;
+    if (team === match.home_team && homeWins > awayWins) {
+      seriesWins += 1;
+    } else if (team === match.away_team && awayWins > homeWins) {
+      seriesWins += 1;
+    } else {
+      seriesLosses += 1;
+    }
+  });
+
+  let mapWins = 0;
+  let mapLosses = 0;
+  mapLogs.forEach((map) => {
+    const team = matchTeams.get(map.match_id);
+    if (!team) {
+      return;
+    }
+    if (map.winner_team === team) {
+      mapWins += 1;
+      if (modes[map.mode]) {
+        modes[map.mode].map_wins += 1;
+      }
+    } else if (map.losing_team === team) {
+      mapLosses += 1;
+      if (modes[map.mode]) {
+        modes[map.mode].map_losses += 1;
+      }
+    }
+  });
+
+  return {
+    overall: {
+      kills: totals.kills,
+      deaths: totals.deaths,
+      series_wins: seriesWins,
+      series_losses: seriesLosses,
+      map_wins: mapWins,
+      map_losses: mapLosses
+    },
+    modes
+  };
+}
+
+export async function getPlayerMapBreakdowns(
+  discordId: string
+): Promise<PlayerMapBreakdown[]> {
+  const { playerLogs, mapLogs, matchIds } = await getPlayerPageBaseData(discordId);
+  const matchTeams = getMatchTeamMap(playerLogs);
+  const playerLogsByMatchMode = buildPlayerLogsByMatchMode(playerLogs);
+  const mapLogsByMatchMode = buildMapLogsByMatchMode(mapLogs);
+
+  const modeBreakdowns: PlayerMapBreakdown[] = Object.entries(MAP_LISTS).map(
+    ([mode, maps]) => ({
+      mode,
+      label: mode === "Control" ? "Overload" : mode,
+      maps: maps.map((mapName) => ({
+        name: mapName,
+        kills: 0,
+        deaths: 0,
+        wins: 0,
+        losses: 0
+      }))
+    })
+  );
+
+  const breakdownMap = new Map<string, Map<string, PlayerMapBreakdown["maps"][0]>>();
+  modeBreakdowns.forEach((breakdown) => {
+    const inner = new Map<string, PlayerMapBreakdown["maps"][0]>();
+    breakdown.maps.forEach((entry) => {
+      inner.set(entry.name, entry);
+    });
+    breakdownMap.set(breakdown.mode, inner);
+  });
+
+  matchIds.forEach((matchId) => {
+    Object.keys(MAP_LISTS).forEach((mode) => {
+      const mapRows = mapLogsByMatchMode.get(buildModeKey(matchId, mode)) ?? [];
+      const playerRows = playerLogsByMatchMode.get(buildModeKey(matchId, mode)) ?? [];
+      mapRows.forEach((mapRow, index) => {
+        const mapEntry = breakdownMap.get(mode)?.get(mapRow.map);
+        if (!mapEntry) {
+          return;
+        }
+        const playerRow = playerRows[index];
+        if (!playerRow) {
+          return;
+        }
+        mapEntry.kills += playerRow.k ?? 0;
+        mapEntry.deaths += playerRow.d ?? 0;
+        const team = matchTeams.get(matchId);
+        if (team) {
+          if (mapRow.winner_team === team) {
+            mapEntry.wins += 1;
+          } else if (mapRow.losing_team === team) {
+            mapEntry.losses += 1;
+          }
+        }
+      });
+    });
+  });
+
+  return modeBreakdowns;
+}
+
+export async function getPlayerMatchHistory(
+  discordId: string
+): Promise<PlayerMatchHistoryEntry[]> {
+  const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
+  const matchTeams = getMatchTeamMap(playerLogs);
+  const playerLogsByMatch = new Map<string, PlayerLogRow[]>();
+  playerLogs.forEach((row) => {
+    if (!playerLogsByMatch.has(row.match_id)) {
+      playerLogsByMatch.set(row.match_id, []);
+    }
+    playerLogsByMatch.get(row.match_id)?.push(row);
+  });
+
+  const playerLogsByMatchMode = buildPlayerLogsByMatchMode(playerLogs);
+  const mapLogsByMatch = new Map<string, MapLog[]>();
+  mapLogs.forEach((row) => {
+    if (!mapLogsByMatch.has(row.match_id)) {
+      mapLogsByMatch.set(row.match_id, []);
+    }
+    mapLogsByMatch.get(row.match_id)?.push(row);
+  });
+
+  return matchLogs.map((match) => {
+    const team = matchTeams.get(match.match_id) ?? null;
+    const opponent =
+      team && match.home_team && match.away_team
+        ? team === match.home_team
+          ? match.away_team
+          : match.home_team
+        : null;
+    const homeWins = match.home_wins ?? 0;
+    const awayWins = match.away_wins ?? 0;
+    const seriesWin =
+      team &&
+      ((team === match.home_team && homeWins > awayWins) ||
+        (team === match.away_team && awayWins > homeWins));
+
+    const matchPlayerRows = playerLogsByMatch.get(match.match_id) ?? [];
+    const totals = matchPlayerRows.reduce(
+      (acc, row) => {
+        acc.k += row.k ?? 0;
+        acc.d += row.d ?? 0;
+        return acc;
+      },
+      { k: 0, d: 0 }
+    );
+
+    const matchMapRows = mapLogsByMatch.get(match.match_id) ?? [];
+    const modeCounters: Record<string, number> = {
+      Hardpoint: 0,
+      SnD: 0,
+      Control: 0
+    };
+
+    const maps = matchMapRows.map((mapRow) => {
+      const counter = modeCounters[mapRow.mode] ?? 0;
+      const playerRows =
+        playerLogsByMatchMode.get(buildModeKey(match.match_id, mapRow.mode)) ?? [];
+      const playerRow = playerRows[counter];
+      modeCounters[mapRow.mode] = counter + 1;
+
+      return {
+        map_num: mapRow.map_num,
+        mode: mapRow.mode,
+        map: mapRow.map,
+        winner_team: mapRow.winner_team,
+        losing_team: mapRow.losing_team,
+        player_stats: playerRow
+          ? {
+              k: playerRow.k ?? 0,
+              d: playerRow.d ?? 0,
+              hp_time: playerRow.hp_time,
+              plants: playerRow.plants,
+              defuses: playerRow.defuses,
+              ticks: playerRow.ticks
+            }
+          : null
+      };
+    });
+
+    return {
+      match_id: match.match_id,
+      match_date: match.match_date,
+      home_team: match.home_team,
+      away_team: match.away_team,
+      home_wins: match.home_wins,
+      away_wins: match.away_wins,
+      player_team: team,
+      opponent,
+      series_result: seriesWin ? "W" : "L",
+      totals,
+      maps
+    };
+  });
 }
 
 export async function getPlayerById(discordId: string): Promise<Player | null> {

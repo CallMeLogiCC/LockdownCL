@@ -53,6 +53,10 @@ export type PlayerLogEntry = {
   write_in: string | null;
 };
 
+export type PlayerLogRow = PlayerLogEntry & {
+  id: number;
+};
+
 export type PlayerModeStat = {
   discord_id?: string;
   mode: string;
@@ -84,62 +88,7 @@ export type TeamModeWinRate = {
   total: number;
 };
 
-export type StandingRow = {
-  team: string;
-  series_wins: number;
-  series_losses: number;
-  map_wins: number;
-  map_losses: number;
-  map_diff: number;
-};
-
-export type PlayerTotals = {
-  total_k: number;
-  total_d: number;
-  ovr_kd: number | null;
-};
-
-export type PlayerMatchSummary = {
-  match_id: string;
-  match_date: string | null;
-  home_team: string | null;
-  away_team: string | null;
-  home_wins: number | null;
-  away_wins: number | null;
-};
-
-export type PlayerMatchModeStat = {
-  match_id: string;
-  mode: string;
-  k: number;
-  d: number;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type MatchPlayerRow = {
-  match_id: string;
-  mode: string;
-  player: string | null;
-  discord_id: string;
-  team: string | null;
-  k: number | null;
-  d: number | null;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type TeamModeWinRate = {
-  mode: string;
-  wins: number;
-  total: number;
-};
+export type TeamModeWinRateRow = TeamModeWinRate;
 
 export type StandingRow = {
   team: string;
@@ -192,302 +141,67 @@ export type MatchPlayerRow = {
   ticks: number | null;
 };
 
-export type TeamModeWinRate = {
+export type PlayerAggregates = {
+  overall: {
+    kills: number;
+    deaths: number;
+    series_wins: number;
+    series_losses: number;
+    map_wins: number;
+    map_losses: number;
+  };
+  modes: Record<
+    string,
+    {
+      kills: number;
+      deaths: number;
+      map_wins: number;
+      map_losses: number;
+    }
+  >;
+};
+
+export type PlayerMapBreakdown = {
   mode: string;
-  wins: number;
-  total: number;
+  label: string;
+  maps: Array<{
+    name: string;
+    kills: number;
+    deaths: number;
+    wins: number;
+    losses: number;
+  }>;
 };
 
-export type StandingRow = {
-  team: string;
-  series_wins: number;
-  series_losses: number;
-  map_wins: number;
-  map_losses: number;
-  map_diff: number;
+export type PlayerMatchMapDetail = {
+  map_num: number;
+  mode: string;
+  map: string;
+  winner_team: string;
+  losing_team: string;
+  player_stats: {
+    k: number;
+    d: number;
+    hp_time: number | null;
+    plants: number | null;
+    defuses: number | null;
+    ticks: number | null;
+  } | null;
 };
 
-export type PlayerTotals = {
-  total_k: number;
-  total_d: number;
-  ovr_kd: number | null;
-};
-
-export type PlayerMatchSummary = {
+export type PlayerMatchHistoryEntry = {
   match_id: string;
   match_date: string | null;
   home_team: string | null;
   away_team: string | null;
   home_wins: number | null;
   away_wins: number | null;
-};
-
-export type PlayerMatchModeStat = {
-  match_id: string;
-  mode: string;
-  k: number;
-  d: number;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type MatchPlayerRow = {
-  match_id: string;
-  mode: string;
-  player: string | null;
-  discord_id: string;
-  team: string | null;
-  k: number | null;
-  d: number | null;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type TeamModeWinRateRow = {
-  mode: string;
-  wins: number;
-  total: number;
-};
-
-export type StandingRow = {
-  team: string;
-  series_wins: number;
-  series_losses: number;
-  map_wins: number;
-  map_losses: number;
-  map_diff: number;
-};
-
-export type PlayerTotals = {
-  total_k: number;
-  total_d: number;
-  ovr_kd: number | null;
-};
-
-export type PlayerMatchSummary = {
-  match_id: string;
-  match_date: string | null;
-  home_team: string | null;
-  away_team: string | null;
-  home_wins: number | null;
-  away_wins: number | null;
-};
-
-export type PlayerMatchModeStat = {
-  match_id: string;
-  mode: string;
-  k: number;
-  d: number;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type MatchPlayerRow = {
-  match_id: string;
-  mode: string;
-  player: string | null;
-  discord_id: string;
-  team: string | null;
-  k: number | null;
-  d: number | null;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type TeamModeWinRateRow = {
-  mode: string;
-  wins: number;
-  total: number;
-};
-
-export type StandingRow = {
-  team: string;
-  series_wins: number;
-  series_losses: number;
-  map_wins: number;
-  map_losses: number;
-  map_diff: number;
-};
-
-export type PlayerTotals = {
-  total_k: number;
-  total_d: number;
-  ovr_kd: number | null;
-};
-
-export type PlayerMatchSummary = {
-  match_id: string;
-  match_date: string | null;
-  home_team: string | null;
-  away_team: string | null;
-  home_wins: number | null;
-  away_wins: number | null;
-};
-
-export type PlayerMatchModeStat = {
-  match_id: string;
-  mode: string;
-  k: number;
-  d: number;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type MatchPlayerRow = {
-  match_id: string;
-  mode: string;
-  player: string | null;
-  discord_id: string;
-  team: string | null;
-  k: number | null;
-  d: number | null;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type TeamModeWinRateRow = {
-  mode: string;
-  wins: number;
-  total: number;
-};
-
-export type StandingRow = {
-  team: string;
-  series_wins: number;
-  series_losses: number;
-  map_wins: number;
-  map_losses: number;
-  map_diff: number;
-};
-
-export type PlayerTotals = {
-  total_k: number;
-  total_d: number;
-  ovr_kd: number | null;
-};
-
-export type PlayerMatchSummary = {
-  match_id: string;
-  match_date: string | null;
-  home_team: string | null;
-  away_team: string | null;
-  home_wins: number | null;
-  away_wins: number | null;
-};
-
-export type PlayerMatchModeStat = {
-  match_id: string;
-  mode: string;
-  k: number;
-  d: number;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type MatchPlayerRow = {
-  match_id: string;
-  mode: string;
-  player: string | null;
-  discord_id: string;
-  team: string | null;
-  k: number | null;
-  d: number | null;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type TeamModeWinRateRow = {
-  mode: string;
-  wins: number;
-  total: number;
-};
-
-export type StandingRow = {
-  team: string;
-  series_wins: number;
-  series_losses: number;
-  map_wins: number;
-  map_losses: number;
-  map_diff: number;
-};
-
-export type PlayerTotals = {
-  total_k: number;
-  total_d: number;
-  ovr_kd: number | null;
-};
-
-export type PlayerMatchSummary = {
-  match_id: string;
-  match_date: string | null;
-  home_team: string | null;
-  away_team: string | null;
-  home_wins: number | null;
-  away_wins: number | null;
-};
-
-export type PlayerMatchModeStat = {
-  match_id: string;
-  mode: string;
-  k: number;
-  d: number;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type MatchPlayerRow = {
-  match_id: string;
-  mode: string;
-  player: string | null;
-  discord_id: string;
-  team: string | null;
-  k: number | null;
-  d: number | null;
-  kd: number | null;
-  hp_time: number | null;
-  plants: number | null;
-  defuses: number | null;
-  ticks: number | null;
-};
-
-export type TeamModeWinRateRow = {
-  mode: string;
-  wins: number;
-  total: number;
-};
-
-export type StandingRow = {
-  team: string;
-  series_wins: number;
-  series_losses: number;
-  map_wins: number;
-  map_losses: number;
-  map_diff: number;
+  player_team: string | null;
+  opponent: string | null;
+  series_result: "W" | "L";
+  totals: {
+    k: number;
+    d: number;
+  };
+  maps: PlayerMatchMapDetail[];
 };
