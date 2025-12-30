@@ -1,8 +1,37 @@
+import type { Metadata } from "next";
 import { hasDatabaseUrl } from "@/lib/db";
 import { listPlayersWithStats } from "@/lib/queries";
 import PlayerLists from "@/app/components/PlayerLists";
+import { buildCanonicalUrl, SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Players",
+  description: SITE_TAGLINE,
+  alternates: {
+    canonical: buildCanonicalUrl("/players")
+  },
+  openGraph: {
+    title: `Players | ${SITE_NAME}`,
+    description: SITE_TAGLINE,
+    url: buildCanonicalUrl("/players"),
+    images: [
+      {
+        url: buildCanonicalUrl("/api/og/site"),
+        width: 1200,
+        height: 630,
+        alt: SITE_NAME
+      }
+    ]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `Players | ${SITE_NAME}`,
+    description: SITE_TAGLINE,
+    images: [buildCanonicalUrl("/api/og/site")]
+  }
+};
 
 export default async function PlayersPage() {
   if (!hasDatabaseUrl()) {
