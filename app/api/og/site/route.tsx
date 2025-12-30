@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { ImageResponse } from "@vercel/og";
 import { getLogoDataUrl, OG_SIZE } from "@/lib/og";
 import { SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
