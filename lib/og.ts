@@ -13,5 +13,5 @@ export const getLogoDataUrl = async (origin?: string) => {
   const response = await fetch(logoUrl);
   const arrayBuffer = await response.arrayBuffer();
   const base64 = arrayBufferToBase64(arrayBuffer);
-  return `data:image/svg+xml;base64,${base64}`;
+  return `data:image/png;base64,${base64}`;
 };

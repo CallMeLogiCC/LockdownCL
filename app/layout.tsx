@@ -45,9 +45,9 @@ export const metadata: Metadata = {
     images: [buildCanonicalUrl("/api/og/site")]
   },
   icons: {
-    icon: [{ url: "/icon.svg" }],
-    shortcut: [{ url: "/icon.svg" }],
-    apple: [{ url: "/icon.svg" }]
+    icon: [{ url: "/icon.png" }],
+    shortcut: [{ url: "/icon.png" }],
+    apple: [{ url: "/icon.png" }]
   }
 };
 
