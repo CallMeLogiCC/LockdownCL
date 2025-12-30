@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -33,6 +34,7 @@ export default function RootLayout({
             Built for the LockdownCL community · Powered by Next.js &amp; Postgres
           </footer>
         </div>
+        <Analytics />
       </body>
     </html>
   );
