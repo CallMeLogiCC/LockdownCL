@@ -1,22 +1,82 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { hasDatabaseUrl } from "@/lib/db";
 import { getMapsBySeries, getMatchPlayerRows, getSeriesById } from "@/lib/queries";
+import JsonLd from "@/app/components/JsonLd";
+import {
+  buildCanonicalUrl,
+  formatMatchDateDisplay,
+  formatMatchDateIso,
+  getMatchScoreline,
+  getMatchWinner,
+  SITE_NAME
+} from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
-const formatStat = (value: number | null) => (value === null ? "—" : value);
+export async function generateMetadata({
+  params
+}: {
+  params: { matchId: string };
+}): Promise<Metadata> {
+  if (!hasDatabaseUrl()) {
+    return {
+      title: "Lockdown CoD League"
+    };
+  }
 
-const formatMatchDate = (value: string | Date | null) => {
-  if (!value) {
-    return "TBD";
+  const match = await getSeriesById(params.matchId);
+
+  if (!match) {
+    return {
+      title: { absolute: `Not Found | ${SITE_NAME}` },
+      robots: {
+        index: false,
+        follow: false
+      }
+    };
   }
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return date.toLocaleDateString();
-};
+
+  const homeTeam = match.home_team ?? "TBD";
+  const awayTeam = match.away_team ?? "TBD";
+  const scoreline = getMatchScoreline(match);
+  const winner = getMatchWinner(match) ?? "TBD";
+  const title = `${homeTeam} vs ${awayTeam} - ${scoreline} - ${winner} Wins! | ${SITE_NAME}`;
+  const description = `Series between ${homeTeam} and ${awayTeam}. Final score ${scoreline}. Winner: ${winner}.`;
+  const url = buildCanonicalUrl(`/matches/${params.matchId}`);
+  const ogImage = buildCanonicalUrl(`/api/og/match?matchId=${params.matchId}`);
+
+  return {
+    title: { absolute: title },
+    description,
+    alternates: {
+      canonical: url
+    },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: SITE_NAME,
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: `${homeTeam} vs ${awayTeam} match card`
+        }
+      ]
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage]
+    }
+  };
+}
+
+const formatStat = (value: number | null) => (value === null ? "—" : value);
 
 export default async function MatchPage({ params }: { params: { matchId: string } }) {
   if (!hasDatabaseUrl()) {
@@ -39,13 +99,29 @@ export default async function MatchPage({ params }: { params: { matchId: string 
     getMatchPlayerRows(params.matchId)
   ]);
 
-  const winner =
-    (match.home_wins ?? 0) > (match.away_wins ?? 0)
-      ? match.home_team
-      : match.away_team;
+  const winner = getMatchWinner(match) ?? "TBD";
 
   return (
     <section className="flex flex-col gap-6">
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "SportsEvent",
+          name: `${match.home_team ?? "TBD"} vs ${match.away_team ?? "TBD"}`,
+          startDate: formatMatchDateIso(match.match_date) ?? undefined,
+          url: buildCanonicalUrl(`/matches/${params.matchId}`),
+          competitor: [
+            {
+              "@type": "SportsTeam",
+              name: match.home_team ?? "TBD"
+            },
+            {
+              "@type": "SportsTeam",
+              name: match.away_team ?? "TBD"
+            }
+          ]
+        }}
+      />
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -54,7 +130,7 @@ export default async function MatchPage({ params }: { params: { matchId: string 
               {match.home_team ?? "TBD"} vs {match.away_team ?? "TBD"}
             </h2>
             <p className="mt-2 text-sm text-white/70">
-              {formatMatchDate(match.match_date)}
+              {formatMatchDateDisplay(match.match_date)}
             </p>
           </div>
           <Link href="/" className="text-sm">
@@ -65,7 +141,7 @@ export default async function MatchPage({ params }: { params: { matchId: string 
           <span>
             Scoreline: {match.home_wins ?? 0} - {match.away_wins ?? 0}
           </span>
-          <span>Winner: {winner ?? "TBD"}</span>
+          <span>Winner: {winner}</span>
           <span>Match ID: {match.match_id}</span>
         </div>
       </div>
@@ -79,7 +155,10 @@ export default async function MatchPage({ params }: { params: { matchId: string 
             {maps.map((map) => {
               const mapPlayers = playerRows.filter((row) => row.mode === map.mode);
               return (
-                <details key={`${map.match_id}-${map.map_num}`} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <details
+                  key={`${map.match_id}-${map.map_num}`}
+                  className="rounded-xl border border-white/10 bg-black/20 p-4"
+                >
                   <summary className="cursor-pointer list-none text-sm text-white">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <span>
