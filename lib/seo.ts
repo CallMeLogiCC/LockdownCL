@@ -5,7 +5,7 @@ export const SITE_NAME = "Lockdown CoD League";
 export const SITE_TAGLINE =
   "Lockdown CoD League! Stats, Rosters, Standings, and Match History!";
 export const SITE_URL = "https://www.lockdowncl.online";
-export const BRAND_LOGO_PATH = "/brand/logo.svg";
+export const BRAND_LOGO_PATH = "/brand/logo.jpg";
 
 export const buildCanonicalUrl = (path: string) => {
   const normalized = path.startsWith("/") ? path : `/${path}`;
