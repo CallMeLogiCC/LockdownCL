@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { hasDatabaseUrl } from "@/lib/db";
 import {
@@ -8,9 +9,78 @@ import {
   getTeamRoster
 } from "@/lib/queries";
 import { findTeamBySlug } from "@/lib/slug";
-import type { MatchLog, PlayerWithStats, TeamModeWinRateRow } from "@/lib/types";
+import type { PlayerWithStats, TeamModeWinRateRow } from "@/lib/types";
+import JsonLd from "@/app/components/JsonLd";
+import {
+  buildCanonicalUrl,
+  computeTeamRecord,
+  getTeamLeagueLabel,
+  SITE_NAME
+} from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params
+}: {
+  params: { teamSlug: string };
+}): Promise<Metadata> {
+  if (!hasDatabaseUrl()) {
+    return {
+      title: "Lockdown CoD League"
+    };
+  }
+
+  const teamNames = await getAllTeams();
+  const team = findTeamBySlug(params.teamSlug, teamNames);
+
+  if (!team) {
+    return {
+      title: { absolute: `Not Found | ${SITE_NAME}` },
+      robots: {
+        index: false,
+        follow: false
+      }
+    };
+  }
+
+  const matches = await getMatchesByTeam(team);
+  const record = computeTeamRecord(team, matches);
+  const recordLabel = `${record.seriesWins}-${record.seriesLosses}`;
+  const leagueLabel = getTeamLeagueLabel(team);
+  const title = `${team} - ${leagueLabel} - ${recordLabel} | ${SITE_NAME}`;
+  const description = `${team} compete in ${leagueLabel}. Current series record ${recordLabel} with a map diff of ${record.mapDiff}.`;
+  const url = buildCanonicalUrl(`/teams/${params.teamSlug}`);
+  const ogImage = buildCanonicalUrl(`/api/og/team?slug=${params.teamSlug}`);
+
+  return {
+    title: { absolute: title },
+    description,
+    alternates: {
+      canonical: url
+    },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: SITE_NAME,
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: `${team} team card`
+        }
+      ]
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage]
+    }
+  };
+}
 
 const formatRank = (rankValue: number | string | null, isNa: boolean) => {
   if (isNa || rankValue === null) {
@@ -45,43 +115,6 @@ const sortRoster = (roster: PlayerWithStats[]) =>
     }
     return (a.discord_name ?? "").localeCompare(b.discord_name ?? "");
   });
-
-const computeTeamRecord = (team: string, matches: MatchLog[]) => {
-  let seriesWins = 0;
-  let seriesLosses = 0;
-  let mapWins = 0;
-  let mapLosses = 0;
-
-  matches.forEach((match) => {
-    const homeWins = match.home_wins ?? 0;
-    const awayWins = match.away_wins ?? 0;
-    if (match.home_team === team) {
-      mapWins += homeWins;
-      mapLosses += awayWins;
-      if (homeWins > awayWins) {
-        seriesWins += 1;
-      } else if (homeWins < awayWins) {
-        seriesLosses += 1;
-      }
-    } else if (match.away_team === team) {
-      mapWins += awayWins;
-      mapLosses += homeWins;
-      if (awayWins > homeWins) {
-        seriesWins += 1;
-      } else if (awayWins < homeWins) {
-        seriesLosses += 1;
-      }
-    }
-  });
-
-  return {
-    seriesWins,
-    seriesLosses,
-    mapDiff: mapWins - mapLosses,
-    mapWins,
-    mapLosses
-  };
-};
 
 const getModeWinDisplay = (mode: string, rates: TeamModeWinRateRow[]) => {
   const entry = rates.find((rate) => rate.mode === mode);
@@ -129,6 +162,19 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
 
   return (
     <section className="flex flex-col gap-6">
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "SportsTeam",
+          name: team,
+          url: buildCanonicalUrl(`/teams/${params.teamSlug}`),
+          memberOf: {
+            "@type": "SportsOrganization",
+            name: SITE_NAME
+          },
+          sport: "Esports"
+        }}
+      />
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
