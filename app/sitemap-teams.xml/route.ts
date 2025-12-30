@@ -3,6 +3,8 @@ import { listTeamsForSitemap } from "@/lib/queries";
 import { SITE_URL } from "@/lib/seo";
 import { slugifyTeam } from "@/lib/slug";
 
+export const dynamic = "force-dynamic";
+
 const normalizeDate = (value: string | null) => {
   if (!value) {
     return new Date().toISOString();
