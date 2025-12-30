@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Lockdown CoD League">
+  <rect width="128" height="128" rx="24" fill="#0f172a" />
+  <circle cx="64" cy="64" r="44" fill="#38bdf8" opacity="0.25" />
+  <text x="64" y="76" text-anchor="middle" font-family="Arial, sans-serif" font-size="32" fill="#e2e8f0" font-weight="700">LCL</text>
+</svg>

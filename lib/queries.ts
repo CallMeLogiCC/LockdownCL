@@ -698,6 +698,64 @@ export async function getAllTeams(): Promise<string[]> {
   return rows.map((row: { team_name: string }) => row.team_name);
 }
 
+export async function listPlayersForSitemap(): Promise<
+  Array<{ discord_id: string; last_match_date: string | null }>
+> {
+  const { rows } = await getPool().query(
+    `
+    select
+      po.discord_id,
+      max(pl.match_date) as last_match_date
+    from player_ovr po
+    left join player_log pl on pl.discord_id = po.discord_id
+    group by po.discord_id
+    order by po.discord_id
+    `
+  );
+
+  return rows as Array<{ discord_id: string; last_match_date: string | null }>;
+}
+
+export async function listTeamsForSitemap(): Promise<
+  Array<{ team_name: string; last_match_date: string | null }>
+> {
+  const { rows } = await getPool().query(
+    `
+    select
+      teams.team_name,
+      max(match_log.match_date) as last_match_date
+    from (
+      select team as team_name from player_ovr where team is not null
+      union
+      select home_team as team_name from match_log where home_team is not null
+      union
+      select away_team as team_name from match_log where away_team is not null
+    ) teams
+    left join match_log
+      on match_log.home_team = teams.team_name
+      or match_log.away_team = teams.team_name
+    group by teams.team_name
+    order by teams.team_name
+    `
+  );
+
+  return rows as Array<{ team_name: string; last_match_date: string | null }>;
+}
+
+export async function listMatchesForSitemap(): Promise<
+  Array<{ match_id: string; match_date: string | null }>
+> {
+  const { rows } = await getPool().query(
+    `
+    select match_id, match_date
+    from match_log
+    order by match_date desc nulls last, match_id desc
+    `
+  );
+
+  return rows as Array<{ match_id: string; match_date: string | null }>;
+}
+
 export async function upsertPlayers(players: Player[]): Promise<number> {
   if (players.length === 0) {
     return 0;
