@@ -70,32 +70,23 @@ export const LEAGUE_TEAMS: Record<LeagueKey, string[]> = {
   Womens: WOMENS_TEAMS
 };
 
-const normalizeField = (value: string | null | undefined) => {
-  if (!value) {
-    return "";
-  }
-  return value.trim();
-};
-
 export const isFormerPlayer = (player: PlayerWithStats) =>
   player.team === "Former Player" && player.status === "Unregistered";
 
 export const isFreeAgent = (player: PlayerWithStats) =>
   player.status?.toLowerCase() === "free agent";
 
-export const isWomensEligible = (player: PlayerWithStats) => {
+export const isCoedRegistered = (player: PlayerWithStats) =>
+  !player.rank_is_na && player.rank_value !== null;
+
+export const isWomensRegistered = (player: PlayerWithStats) => {
   if (player.women_status?.toLowerCase() === "unregistered") {
     return false;
   }
-
-  const womensFields = [
-    normalizeField(player.women_status),
-    normalizeField(player.womens_team),
-    player.womens_rank !== null ? String(player.womens_rank) : ""
-  ];
-
-  return womensFields.some((value) => value !== "" && value.toLowerCase() !== "na");
+  return player.womens_rank !== null;
 };
+
+export const isWomensEligible = isWomensRegistered;
 
 export const getLeagueForRank = (rankValue: number | null, rankIsNa: boolean) => {
   if (rankIsNa || rankValue === null) {
@@ -117,7 +108,7 @@ export const getLeagueForRank = (rankValue: number | null, rankIsNa: boolean) =>
 
 export const getLeagueForPlayer = (player: PlayerWithStats, league: LeagueKey) => {
   if (league === "Womens") {
-    return isWomensEligible(player);
+    return isWomensRegistered(player);
   }
   const bucket = getLeagueForRank(player.rank_value, player.rank_is_na);
   return bucket === league;

@@ -4,6 +4,22 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.discordapp.com"
+      },
+      {
+        protocol: "https",
+        hostname: "*.public.blob.vercel-storage.com"
+      },
+      {
+        protocol: "https",
+        hostname: "*.blob.vercel-storage.com"
+      }
+    ]
+  },
   async redirects() {
     return [
       {
