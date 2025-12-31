@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { StandingRow } from "@/lib/types";
 import { LEAGUE_LABELS, LeagueKey } from "@/lib/league";
 import { slugifyTeam } from "@/lib/slug";
@@ -9,10 +10,28 @@ import { slugifyTeam } from "@/lib/slug";
 const formatRecord = (row: StandingRow) => `${row.series_wins}-${row.series_losses}`;
 
 export default function StandingsTabs({ standings }: { standings: Record<LeagueKey, StandingRow[]> }) {
-  const [activeLeague, setActiveLeague] = useState<LeagueKey>("Lowers");
+  const searchParams = useSearchParams();
+  const leagueFromQuery = useMemo(() => {
+    const value = searchParams.get("league");
+    if (!value) {
+      return null;
+    }
+    const normalized = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+    return (LEAGUE_LABELS as readonly string[]).includes(normalized)
+      ? (normalized as LeagueKey)
+      : null;
+  }, [searchParams]);
+
+  const [activeLeague, setActiveLeague] = useState<LeagueKey>(leagueFromQuery ?? "Lowers");
+
+  useEffect(() => {
+    if (leagueFromQuery && leagueFromQuery !== activeLeague) {
+      setActiveLeague(leagueFromQuery);
+    }
+  }, [activeLeague, leagueFromQuery]);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
+    <section id="standings" className="rounded-2xl border border-white/10 bg-white/5 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white">League Standings</h2>

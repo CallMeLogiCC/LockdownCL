@@ -6,7 +6,8 @@ import {
   getPlayerMapBreakdowns,
   getPlayerMatchHistory,
   getPlayerProfile,
-  getPlayerTotals
+  getPlayerTotals,
+  getUserProfile
 } from "@/lib/queries";
 import PlayerProfileClient from "@/app/players/[discordId]/PlayerProfileClient";
 import JsonLd from "@/app/components/JsonLd";
@@ -17,6 +18,7 @@ import {
   SITE_NAME,
   SITE_TAGLINE
 } from "@/lib/seo";
+import { getAuthSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -98,13 +100,16 @@ export default async function PlayerPage({
     );
   }
 
-  const [profile, aggregates, mapBreakdowns, matchHistory, totals] = await Promise.all([
-    getPlayerProfile(params.discordId),
-    getPlayerAggregates(params.discordId),
-    getPlayerMapBreakdowns(params.discordId),
-    getPlayerMatchHistory(params.discordId),
-    getPlayerTotals(params.discordId)
-  ]);
+  const [profile, aggregates, mapBreakdowns, matchHistory, totals, userProfile, session] =
+    await Promise.all([
+      getPlayerProfile(params.discordId),
+      getPlayerAggregates(params.discordId),
+      getPlayerMapBreakdowns(params.discordId),
+      getPlayerMatchHistory(params.discordId),
+      getPlayerTotals(params.discordId),
+      getUserProfile(params.discordId),
+      getAuthSession()
+    ]);
 
   if (!profile) {
     notFound();
@@ -113,6 +118,11 @@ export default async function PlayerPage({
   const playerName = profile.discord_name ?? "Unknown";
   const teamLabel = getPlayerTeamLabel(profile.team, profile.status);
   const ovrLabel = formatOvrLabel(totals.ovr_kd);
+  const viewerDiscordId = session?.user?.discordId ?? null;
+  const isViewer = viewerDiscordId === params.discordId;
+  const statusLabel = (profile.status ?? "").toLowerCase();
+  const isUnregistered =
+    statusLabel === "unregistered" || (profile.team ?? "").toLowerCase() === "former player";
 
   return (
     <>
@@ -136,6 +146,9 @@ export default async function PlayerPage({
         aggregates={aggregates}
         mapBreakdowns={mapBreakdowns}
         matchHistory={matchHistory}
+        userProfile={userProfile}
+        showPrivateWarning={isViewer && isUnregistered}
+        showEditShortcut={isViewer}
       />
       <div className="sr-only">Overall KD: {ovrLabel}</div>
     </>
