@@ -2,6 +2,8 @@ import { hasDatabaseUrl } from "@/lib/db";
 import { listMatchesForSitemap, listPlayersForSitemap, listTeamsForSitemap } from "@/lib/queries";
 import { SITE_URL } from "@/lib/seo";
 
+export const dynamic = "force-dynamic";
+
 const PLAYERS_CHUNK_SIZE = 500;
 const MATCHES_CHUNK_SIZE = 500;
 
