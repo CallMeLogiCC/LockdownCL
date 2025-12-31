@@ -24,7 +24,7 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  await updateUserProfile({
+  const updated = await updateUserProfile({
     discordId,
     avatarUrl: normalize(body.avatarUrl),
     bannerUrl: normalize(body.bannerUrl),
@@ -33,6 +33,13 @@ export async function PUT(request: Request) {
     youtubeUrl: normalize(body.youtubeUrl),
     tiktokUrl: normalize(body.tiktokUrl)
   });
+
+  if (!updated) {
+    return NextResponse.json({
+      ok: true,
+      warning: "Profile storage is unavailable. Changes were not persisted."
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -425,24 +425,31 @@ export async function getDiscordIdForUserId(userId: string): Promise<string | nu
 }
 
 export async function getUserProfile(discordId: string): Promise<UserProfile | null> {
-  const { rows } = await getPool().query(
-    `
-    select
-      discord_id,
-      avatar_url,
-      banner_url,
-      twitter_url,
-      twitch_url,
-      youtube_url,
-      tiktok_url,
-      updated_at
-    from user_profiles
-    where discord_id = $1
-    `,
-    [discordId]
-  );
+  try {
+    const { rows } = await getPool().query(
+      `
+      select
+        discord_id,
+        avatar_url,
+        banner_url,
+        twitter_url,
+        twitch_url,
+        youtube_url,
+        tiktok_url,
+        updated_at
+      from user_profiles
+      where discord_id = $1
+      `,
+      [discordId]
+    );
 
-  return (rows as UserProfile[])[0] ?? null;
+    return (rows as UserProfile[])[0] ?? null;
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function ensureUserProfile({
@@ -454,14 +461,21 @@ export async function ensureUserProfile({
   avatarUrl: string | null;
   bannerUrl: string | null;
 }) {
-  await getPool().query(
-    `
-    insert into user_profiles (discord_id, avatar_url, banner_url, updated_at)
-    values ($1, $2, $3, now())
-    on conflict (discord_id) do nothing
-    `,
-    [discordId, avatarUrl, bannerUrl]
-  );
+  try {
+    await getPool().query(
+      `
+      insert into user_profiles (discord_id, avatar_url, banner_url, updated_at)
+      values ($1, $2, $3, now())
+      on conflict (discord_id) do nothing
+      `,
+      [discordId, avatarUrl, bannerUrl]
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function updateUserProfile({
@@ -480,40 +494,48 @@ export async function updateUserProfile({
   twitchUrl: string | null;
   youtubeUrl: string | null;
   tiktokUrl: string | null;
-}) {
-  await getPool().query(
-    `
-    insert into user_profiles (
-      discord_id,
-      avatar_url,
-      banner_url,
-      twitter_url,
-      twitch_url,
-      youtube_url,
-      tiktok_url,
-      updated_at
-    )
-    values ($1, $2, $3, $4, $5, $6, $7, now())
-    on conflict (discord_id)
-    do update set
-      avatar_url = excluded.avatar_url,
-      banner_url = excluded.banner_url,
-      twitter_url = excluded.twitter_url,
-      twitch_url = excluded.twitch_url,
-      youtube_url = excluded.youtube_url,
-      tiktok_url = excluded.tiktok_url,
-      updated_at = now()
-    `,
-    [
-      discordId,
-      avatarUrl,
-      bannerUrl,
-      twitterUrl,
-      twitchUrl,
-      youtubeUrl,
-      tiktokUrl
-    ]
-  );
+}): Promise<boolean> {
+  try {
+    await getPool().query(
+      `
+      insert into user_profiles (
+        discord_id,
+        avatar_url,
+        banner_url,
+        twitter_url,
+        twitch_url,
+        youtube_url,
+        tiktok_url,
+        updated_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, now())
+      on conflict (discord_id)
+      do update set
+        avatar_url = excluded.avatar_url,
+        banner_url = excluded.banner_url,
+        twitter_url = excluded.twitter_url,
+        twitch_url = excluded.twitch_url,
+        youtube_url = excluded.youtube_url,
+        tiktok_url = excluded.tiktok_url,
+        updated_at = now()
+      `,
+      [
+        discordId,
+        avatarUrl,
+        bannerUrl,
+        twitterUrl,
+        twitchUrl,
+        youtubeUrl,
+        tiktokUrl
+      ]
+    );
+    return true;
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 export async function getPlayerTotals(discordId: string): Promise<PlayerTotals> {

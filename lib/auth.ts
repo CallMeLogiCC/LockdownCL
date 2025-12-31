@@ -80,3 +80,12 @@ export const authOptions: NextAuthOptions = {
 };
 
 export const getAuthSession = () => getServerSession(authOptions);
+
+export const getSafeAuthSession = async () => {
+  try {
+    return await getServerSession(authOptions);
+  } catch (error) {
+    console.error("Failed to load auth session", error);
+    return null;
+  }
+};

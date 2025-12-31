@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getAuthSession } from "@/lib/auth";
+import { getSafeAuthSession } from "@/lib/auth";
 import SignInButton from "@/app/components/SignInButton";
 
 const leagues = [
@@ -11,7 +11,7 @@ const leagues = [
 ];
 
 export default async function SiteHeader() {
-  const session = await getAuthSession();
+  const session = await getSafeAuthSession();
   const isLoggedIn = Boolean(session?.user?.discordId);
 
   return (
