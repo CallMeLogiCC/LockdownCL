@@ -12,9 +12,14 @@ const createPool = () => {
   const shouldUseSsl =
     process.env.PGSSLMODE === "require" || connectionString.includes("sslmode=require");
 
+  const max = Number(process.env.PG_POOL_MAX ?? 5);
+
   return new Pool({
     connectionString,
-    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined
+    ssl: shouldUseSsl ? { rejectUnauthorized: false } : undefined,
+    max: Number.isNaN(max) ? 5 : max,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000
   });
 };
 
