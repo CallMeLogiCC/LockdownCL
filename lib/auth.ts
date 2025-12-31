@@ -114,7 +114,10 @@ export const getSafeAuthSession = async () => {
   try {
     return await getServerSession(authOptions);
   } catch (error) {
-    console.error("Failed to load auth session", error);
+    const digest = (error as { digest?: string }).digest;
+    if (digest !== "DYNAMIC_SERVER_USAGE") {
+      console.error("Failed to load auth session", error);
+    }
     return null;
   }
 };

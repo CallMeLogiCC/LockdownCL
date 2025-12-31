@@ -70,7 +70,7 @@ create table if not exists player_ovr (
 
 -- Auth.js / NextAuth tables
 create table if not exists users (
-  id text primary key,
+  id bigserial primary key,
   name text,
   email text,
   "emailVerified" timestamp,
@@ -78,8 +78,8 @@ create table if not exists users (
 );
 
 create table if not exists accounts (
-  id text primary key,
-  "userId" text not null references users(id) on delete cascade,
+  id bigserial primary key,
+  "userId" bigint not null references users(id) on delete cascade,
   type text not null,
   provider text not null,
   "providerAccountId" text not null,
@@ -96,13 +96,13 @@ create unique index if not exists accounts_provider_providerAccountId_key
   on accounts (provider, "providerAccountId");
 
 create table if not exists sessions (
-  id text primary key,
+  id bigserial primary key,
   "sessionToken" text not null unique,
-  "userId" text not null references users(id) on delete cascade,
+  "userId" bigint not null references users(id) on delete cascade,
   expires timestamp not null
 );
 
-create table if not exists verification_tokens (
+create table if not exists verification_token (
   identifier text not null,
   token text not null,
   expires timestamp not null,

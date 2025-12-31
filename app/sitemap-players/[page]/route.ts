@@ -2,6 +2,8 @@ import { hasDatabaseUrl } from "@/lib/db";
 import { listPlayersForSitemap } from "@/lib/queries";
 import { SITE_URL } from "@/lib/seo";
 
+export const dynamic = "force-dynamic";
+
 const CHUNK_SIZE = 500;
 
 const normalizeDate = (value: string | null) => {
