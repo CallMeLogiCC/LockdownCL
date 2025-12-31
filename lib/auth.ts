@@ -1,11 +1,9 @@
-import type { Adapter } from "next-auth/adapters";
 import { getServerSession } from "next-auth/next";
 import type { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
-import PostgresAdapter from "@auth/pg-adapter";
-import { getPool, hasDatabaseUrl } from "@/lib/db";
+import { hasDatabaseUrl } from "@/lib/db";
 import { buildDiscordAvatarUrl, buildDiscordBannerUrl } from "@/lib/discord";
-import { ensureUserProfile, getDiscordIdForUserId } from "@/lib/queries";
+import { ensureUserProfile } from "@/lib/queries";
 
 const parseAdminIds = () =>
   (process.env.ADMIN_DISCORD_IDS ?? "")
@@ -45,20 +43,7 @@ const safeEnsureUserProfile = async (params: {
   }
 };
 
-const safeGetDiscordIdForUserId = async (userId: string) => {
-  try {
-    return await getDiscordIdForUserId(userId);
-  } catch (error) {
-    if (isMissingTableError(error)) {
-      return null;
-    }
-    console.error("Failed to resolve Discord id for user", error);
-    return null;
-  }
-};
-
 export const authOptions: NextAuthOptions = {
-  adapter: hasDatabase ? (PostgresAdapter(getPool()) as Adapter) : undefined,
   providers: [
     DiscordProvider({
       clientId: process.env.DISCORD_CLIENT_ID ?? "",
@@ -74,13 +59,11 @@ export const authOptions: NextAuthOptions = {
       }
     })
   ],
-  session: hasDatabase
-    ? {
-        strategy: "database",
-        maxAge: 60 * 60 * 24 * 90,
-        updateAge: 60 * 60 * 24
-      }
-    : undefined,
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60 * 24 * 90,
+    updateAge: 60 * 60 * 24
+  },
   callbacks: {
     async signIn({ account, profile }) {
       if (account?.provider === "discord" && hasDatabase) {
@@ -96,10 +79,17 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async session({ session, user }) {
-      if (session.user && hasDatabase && user?.id) {
-        session.user.id = user.id;
-        const discordId = await safeGetDiscordIdForUserId(user.id);
+    async jwt({ token, account }) {
+      if (account?.provider === "discord") {
+        token.discordId = account.providerAccountId;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        const discordId =
+          typeof token.discordId === "string" ? token.discordId : token.sub ?? null;
+        session.user.id = token.sub ?? null;
         session.user.discordId = discordId;
         session.user.isAdmin = discordId ? adminIds.includes(discordId) : false;
       }
