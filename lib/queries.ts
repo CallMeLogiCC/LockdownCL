@@ -15,6 +15,7 @@ import type {
   PlayerModeStat,
   PlayerTotals,
   PlayerWithStats,
+  UserProfile,
   TeamModeWinRateRow
 } from "@/lib/types";
 
@@ -410,6 +411,133 @@ export async function getPlayerById(discordId: string): Promise<Player | null> {
   return (rows as Player[])[0] ?? null;
 }
 
+export async function getDiscordIdForUserId(userId: string): Promise<string | null> {
+  const { rows } = await getPool().query(
+    `
+    select "providerAccountId"
+    from accounts
+    where "userId" = $1 and provider = 'discord'
+    `,
+    [userId]
+  );
+  const row = rows[0] as { providerAccountId?: string } | undefined;
+  return row?.providerAccountId ?? null;
+}
+
+export async function getUserProfile(discordId: string): Promise<UserProfile | null> {
+  try {
+    const { rows } = await getPool().query(
+      `
+      select
+        discord_id,
+        avatar_url,
+        banner_url,
+        twitter_url,
+        twitch_url,
+        youtube_url,
+        tiktok_url,
+        updated_at
+      from user_profiles
+      where discord_id = $1
+      `,
+      [discordId]
+    );
+
+    return (rows as UserProfile[])[0] ?? null;
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function ensureUserProfile({
+  discordId,
+  avatarUrl,
+  bannerUrl
+}: {
+  discordId: string;
+  avatarUrl: string | null;
+  bannerUrl: string | null;
+}) {
+  try {
+    await getPool().query(
+      `
+      insert into user_profiles (discord_id, avatar_url, banner_url, updated_at)
+      values ($1, $2, $3, now())
+      on conflict (discord_id) do nothing
+      `,
+      [discordId, avatarUrl, bannerUrl]
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") {
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function updateUserProfile({
+  discordId,
+  avatarUrl,
+  bannerUrl,
+  twitterUrl,
+  twitchUrl,
+  youtubeUrl,
+  tiktokUrl
+}: {
+  discordId: string;
+  avatarUrl: string | null;
+  bannerUrl: string | null;
+  twitterUrl: string | null;
+  twitchUrl: string | null;
+  youtubeUrl: string | null;
+  tiktokUrl: string | null;
+}): Promise<boolean> {
+  try {
+    await getPool().query(
+      `
+      insert into user_profiles (
+        discord_id,
+        avatar_url,
+        banner_url,
+        twitter_url,
+        twitch_url,
+        youtube_url,
+        tiktok_url,
+        updated_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, now())
+      on conflict (discord_id)
+      do update set
+        avatar_url = excluded.avatar_url,
+        banner_url = excluded.banner_url,
+        twitter_url = excluded.twitter_url,
+        twitch_url = excluded.twitch_url,
+        youtube_url = excluded.youtube_url,
+        tiktok_url = excluded.tiktok_url,
+        updated_at = now()
+      `,
+      [
+        discordId,
+        avatarUrl,
+        bannerUrl,
+        twitterUrl,
+        twitchUrl,
+        youtubeUrl,
+        tiktokUrl
+      ]
+    );
+    return true;
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export async function getPlayerTotals(discordId: string): Promise<PlayerTotals> {
   const { rows } = await getPool().query(
     `
@@ -655,6 +783,8 @@ export async function getTeamRoster(team: string): Promise<PlayerWithStats[]> {
     where po.team = $1
       and coalesce(po.status, '') != 'Free Agent'
       and not (po.team = 'Former Player' and po.status = 'Unregistered')
+      and po.rank_is_na = false
+      and po.rank_value is not null
     order by po.discord_name
     `,
     [team]

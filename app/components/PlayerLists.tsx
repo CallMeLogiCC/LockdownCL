@@ -11,9 +11,10 @@ import {
   getPlayerRankForLeague,
   getPlayerStatusForLeague,
   getPlayerTeamForLeague,
+  isCoedRegistered,
   isFormerPlayer,
   isFreeAgent,
-  isWomensEligible
+  isWomensRegistered
 } from "@/lib/league";
 import { slugifyTeam } from "@/lib/slug";
 
@@ -119,7 +120,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
       basePlayers.filter((player) => {
         if (leagueFilter !== "All") {
           if (leagueFilter === "Womens") {
-            if (!isWomensEligible(player)) {
+            if (!isWomensRegistered(player)) {
               return false;
             }
           }
@@ -168,7 +169,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
     const team = getPlayerTeamForLeague(player, leagueKey);
     const status = getPlayerStatusForLeague(player, leagueKey);
     const rankValue = getPlayerRankForLeague(player, leagueKey);
-    const rankIsNa = leagueKey === "Womens" ? rankValue === null : player.rank_is_na;
+    const rankIsNa = leagueKey === "Womens" ? rankValue === null : !isCoedRegistered(player);
 
     return (
       <tr key={player.discord_id} className="hover:bg-white/5">
@@ -288,7 +289,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
                     const roster = players.filter((player) => {
                       if (league === "Womens") {
                         return (
-                          isWomensEligible(player) &&
+                          isWomensRegistered(player) &&
                           player.womens_team === team &&
                           player.women_status?.toLowerCase() !== "free agent"
                         );
@@ -296,6 +297,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
                       return (
                         player.team === team &&
                         !isFormerPlayer(player) &&
+                        isCoedRegistered(player) &&
                         player.status?.toLowerCase() !== "free agent"
                       );
                     });
@@ -326,7 +328,8 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
                               <tbody className="divide-y divide-white/5">
                                 {sortPlayers(roster, league).map((player) => {
                                   const rank = getPlayerRankForLeague(player, league);
-                                  const isNa = league === "Womens" ? rank === null : player.rank_is_na;
+                                  const isNa =
+                                    league === "Womens" ? rank === null : !isCoedRegistered(player);
                                   return (
                                     <tr key={player.discord_id}>
                                       <td className="px-2 py-2 text-white">

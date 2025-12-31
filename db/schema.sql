@@ -67,3 +67,55 @@ create table if not exists player_ovr (
       or (not rank_is_na and rank_value between 0.5 and 18.0)
     )
 );
+
+-- Auth.js / NextAuth tables
+create table if not exists users (
+  id text primary key,
+  name text,
+  email text,
+  "emailVerified" timestamp,
+  image text
+);
+
+create table if not exists accounts (
+  id text primary key,
+  "userId" text not null references users(id) on delete cascade,
+  type text not null,
+  provider text not null,
+  "providerAccountId" text not null,
+  refresh_token text,
+  access_token text,
+  expires_at integer,
+  token_type text,
+  scope text,
+  id_token text,
+  session_state text
+);
+
+create unique index if not exists accounts_provider_providerAccountId_key
+  on accounts (provider, "providerAccountId");
+
+create table if not exists sessions (
+  id text primary key,
+  "sessionToken" text not null unique,
+  "userId" text not null references users(id) on delete cascade,
+  expires timestamp not null
+);
+
+create table if not exists verification_tokens (
+  identifier text not null,
+  token text not null,
+  expires timestamp not null,
+  primary key (identifier, token)
+);
+
+create table if not exists user_profiles (
+  discord_id text primary key,
+  avatar_url text,
+  banner_url text,
+  twitter_url text,
+  twitch_url text,
+  youtube_url text,
+  tiktok_url text,
+  updated_at timestamp not null default now()
+);
