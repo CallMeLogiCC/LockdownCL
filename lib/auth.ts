@@ -27,6 +27,35 @@ const getDiscordProfileName = (profile: DiscordProfile) =>
   profile.global_name ?? profile.username ?? "Unknown";
 
 const hasDatabase = hasDatabaseUrl();
+const isMissingTableError = (error: unknown) =>
+  (error as { code?: string }).code === "42P01";
+
+const safeEnsureUserProfile = async (params: {
+  discordId: string;
+  avatarUrl: string | null;
+  bannerUrl: string | null;
+}) => {
+  try {
+    await ensureUserProfile(params);
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return;
+    }
+    console.error("Failed to ensure user profile", error);
+  }
+};
+
+const safeGetDiscordIdForUserId = async (userId: string) => {
+  try {
+    return await getDiscordIdForUserId(userId);
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return null;
+    }
+    console.error("Failed to resolve Discord id for user", error);
+    return null;
+  }
+};
 
 export const authOptions: NextAuthOptions = {
   adapter: hasDatabase ? (PostgresAdapter(getPool()) as Adapter) : undefined,
@@ -59,7 +88,7 @@ export const authOptions: NextAuthOptions = {
         const discordProfile = profile as DiscordProfile | undefined;
         const avatarUrl = buildDiscordAvatarUrl(discordId, discordProfile?.avatar ?? null);
         const bannerUrl = buildDiscordBannerUrl(discordId, discordProfile?.banner ?? null);
-        await ensureUserProfile({
+        await safeEnsureUserProfile({
           discordId,
           avatarUrl,
           bannerUrl
@@ -68,9 +97,9 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async session({ session, user }) {
-      if (session.user && hasDatabase) {
+      if (session.user && hasDatabase && user?.id) {
         session.user.id = user.id;
-        const discordId = await getDiscordIdForUserId(user.id);
+        const discordId = await safeGetDiscordIdForUserId(user.id);
         session.user.discordId = discordId;
         session.user.isAdmin = discordId ? adminIds.includes(discordId) : false;
       }
