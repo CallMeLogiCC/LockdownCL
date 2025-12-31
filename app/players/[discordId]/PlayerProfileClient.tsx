@@ -1,13 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type {
   PlayerAggregates,
   PlayerMapBreakdown,
   PlayerMatchHistoryEntry,
-  Player
+  Player,
+  UserProfile
 } from "@/lib/types";
+import { isWomensRegistered } from "@/lib/league";
 
 const seasons = ["Season 0", "Season 1", "Season 2", "Lifetime"] as const;
 
@@ -93,12 +96,18 @@ export default function PlayerProfileClient({
   profile,
   aggregates,
   mapBreakdowns,
-  matchHistory
+  matchHistory,
+  userProfile,
+  showPrivateWarning,
+  showEditShortcut
 }: {
   profile: Player;
   aggregates: PlayerAggregates;
   mapBreakdowns: PlayerMapBreakdown[];
   matchHistory: PlayerMatchHistoryEntry[];
+  userProfile: UserProfile | null;
+  showPrivateWarning: boolean;
+  showEditShortcut: boolean;
 }) {
   const [season, setSeason] = useState<(typeof seasons)[number]>("Season 2");
 
@@ -106,6 +115,25 @@ export default function PlayerProfileClient({
     () => formatRank(profile.rank_value, profile.rank_is_na),
     [profile.rank_value, profile.rank_is_na]
   );
+  const womensRankDisplay = useMemo(
+    () => formatRank(profile.womens_rank, profile.womens_rank === null),
+    [profile.womens_rank]
+  );
+
+  const coedRegistered = !profile.rank_is_na && profile.rank_value !== null;
+  const womensRegistered = isWomensRegistered({
+    ...profile,
+    total_k: 0,
+    total_d: 0,
+    ovr_kd: null
+  });
+
+  const socialLinks = [
+    { label: "Twitter/X", url: userProfile?.twitter_url },
+    { label: "Twitch", url: userProfile?.twitch_url },
+    { label: "YouTube", url: userProfile?.youtube_url },
+    { label: "TikTok", url: userProfile?.tiktok_url }
+  ].filter((link): link is { label: string; url: string } => Boolean(link.url));
 
   const season2Breakdowns = mapBreakdowns;
   const lifetimeBreakdowns = placeholderBreakdowns(mapBreakdowns);
@@ -130,17 +158,49 @@ export default function PlayerProfileClient({
 
   return (
     <section className="flex flex-col gap-6">
+      {showPrivateWarning ? (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+          You are currently not registered for the league.
+        </div>
+      ) : null}
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/80 shadow-[0_0_40px_rgba(0,0,0,0.4)]">
-        <div className="h-40 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900" />
+        <div className="relative h-40">
+          {userProfile?.banner_url ? (
+            <Image
+              src={userProfile.banner_url}
+              alt={`${profile.discord_name ?? "Player"} banner`}
+              fill
+              className="object-cover"
+              sizes="100vw"
+            />
+          ) : (
+            <div className="h-40 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900" />
+          )}
+        </div>
         <div className="absolute inset-x-0 top-0 flex h-40 items-center justify-center">
           <div className="rounded-full border border-white/10 bg-black/40 px-6 py-2 text-xs uppercase tracking-[0.4em] text-white/50">
             Player Spotlight
           </div>
         </div>
-        <div className="absolute left-6 top-24 flex h-24 w-24 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-slate-800 via-slate-900 to-black shadow-lg">
-          <span className="text-xs uppercase tracking-[0.3em] text-white/60">Avatar</span>
+        <div className="absolute left-6 top-24 flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-800 via-slate-900 to-black shadow-lg">
+          {userProfile?.avatar_url ? (
+            <Image
+              src={userProfile.avatar_url}
+              alt={`${profile.discord_name ?? "Player"} avatar`}
+              width={96}
+              height={96}
+              className="h-24 w-24 object-cover"
+            />
+          ) : (
+            <span className="text-xs uppercase tracking-[0.3em] text-white/60">Avatar</span>
+          )}
         </div>
-        <div className="absolute right-6 top-6">
+        <div className="absolute right-6 top-6 flex items-center gap-4">
+          {showEditShortcut ? (
+            <Link href="/account" className="text-xs text-white/70 hover:text-white">
+              Edit profile →
+            </Link>
+          ) : null}
           <Link href="/players" className="text-xs text-white/60 hover:text-white">
             ← Back to players
           </Link>
@@ -156,17 +216,53 @@ export default function PlayerProfileClient({
               <p className="text-sm text-white/70">
                 Activision ID: {formatIgn(profile.ign)}
               </p>
-              <div className="flex flex-wrap gap-3 text-xs text-white/60">
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                  Team: {profile.team ?? "—"}
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                  Rank: {rankDisplay}
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                  Status: {profile.status ?? "—"}
-                </span>
+              <div className="grid gap-2 text-xs text-white/60 md:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                  {coedRegistered ? (
+                    <>
+                      <div className="text-[10px] uppercase tracking-[0.3em] text-white/40">
+                        Co-ed
+                      </div>
+                      <div className="mt-1 text-white/80">
+                        {profile.team ?? "—"} · Rank {rankDisplay} ·{" "}
+                        {profile.status ?? "—"}
+                      </div>
+                    </>
+                  ) : (
+                    <span>Co-ed: N/A</span>
+                  )}
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                  {womensRegistered ? (
+                    <>
+                      <div className="text-[10px] uppercase tracking-[0.3em] text-white/40">
+                        Womens
+                      </div>
+                      <div className="mt-1 text-white/80">
+                        {profile.womens_team ?? "—"} · Rank {womensRankDisplay} ·{" "}
+                        {profile.women_status ?? profile.status ?? "—"}
+                      </div>
+                    </>
+                  ) : (
+                    <span>Womens: N/A</span>
+                  )}
+                </div>
               </div>
+              {socialLinks.length > 0 ? (
+                <div className="flex flex-wrap gap-3 text-xs text-white/60">
+                  {socialLinks.map((link) => (
+                    <a
+                      key={link.label}
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 hover:text-white"
+                    >
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

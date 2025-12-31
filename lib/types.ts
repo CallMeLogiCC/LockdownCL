@@ -205,3 +205,14 @@ export type PlayerMatchHistoryEntry = {
   };
   maps: PlayerMatchMapDetail[];
 };
+
+export type UserProfile = {
+  discord_id: string;
+  avatar_url: string | null;
+  banner_url: string | null;
+  twitter_url: string | null;
+  twitch_url: string | null;
+  youtube_url: string | null;
+  tiktok_url: string | null;
+  updated_at: string | null;
+};
