@@ -99,15 +99,21 @@ const formatKd = (kills: number, deaths: number) => {
   return (kills / deaths).toFixed(2);
 };
 
-const sortRoster = (roster: PlayerWithStats[]) =>
+const sortRoster = (roster: PlayerWithStats[], isWomens: boolean) =>
   [...roster].sort((a, b) => {
-    const naA = a.rank_is_na || a.rank_value === null;
-    const naB = b.rank_is_na || b.rank_value === null;
+    const naA = isWomens
+      ? a.womens_rank === null
+      : a.rank_is_na || a.rank_value === null;
+    const naB = isWomens
+      ? b.womens_rank === null
+      : b.rank_is_na || b.rank_value === null;
     if (naA !== naB) {
       return naA ? 1 : -1;
     }
-    if (a.rank_value !== b.rank_value) {
-      return (a.rank_value ?? 0) - (b.rank_value ?? 0);
+    const rankA = isWomens ? a.womens_rank : a.rank_value;
+    const rankB = isWomens ? b.womens_rank : b.rank_value;
+    if (rankA !== rankB) {
+      return (rankA ?? 0) - (rankB ?? 0);
     }
     return (a.discord_name ?? "").localeCompare(b.discord_name ?? "");
   });
@@ -149,12 +155,13 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
   }
 
   const [roster, matches, modeRates] = await Promise.all([
-    getTeamRoster(team),
+    getTeamRoster(team, teamDef.league),
     getMatchesByTeam(team),
     getTeamModeWinRates(team)
   ]);
 
   const record = computeTeamRecord(team, matches);
+  const isWomens = teamDef.league === "Womens";
 
   return (
     <section className="flex flex-col gap-6">
@@ -218,12 +225,13 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
                 <tr>
                   <th className="px-4 py-3">Discord Name</th>
                   <th className="px-4 py-3">IGN</th>
-                  <th className="px-4 py-3">Rank</th>
+                  <th className="px-4 py-3">{isWomens ? "Womens Rank" : "Rank"}</th>
+                  <th className="px-4 py-3">{isWomens ? "Womens Status" : "Status"}</th>
                   <th className="px-4 py-3">OVR KD</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
-                {sortRoster(roster).map((player) => (
+                {sortRoster(roster, isWomens).map((player) => (
                   <tr key={player.discord_id} className="hover:bg-white/5">
                     <td className="px-4 py-3 text-white">
                       <Link href={`/players/${player.discord_id}`} className="font-semibold">
@@ -234,7 +242,12 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
                       {player.ign && player.ign.trim() ? player.ign : "N/A"}
                     </td>
                     <td className="px-4 py-3 text-white/70">
-                      {formatRank(player.rank_value, player.rank_is_na)}
+                      {isWomens
+                        ? formatRank(player.womens_rank, player.womens_rank === null)
+                        : formatRank(player.rank_value, player.rank_is_na)}
+                    </td>
+                    <td className="px-4 py-3 text-white/70">
+                      {isWomens ? player.women_status ?? "—" : player.status ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-white/70">
                       {formatKd(player.total_k, player.total_d)}

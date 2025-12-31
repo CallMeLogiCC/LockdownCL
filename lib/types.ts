@@ -27,6 +27,11 @@ export type MatchLog = {
   series_winner: string | null;
 };
 
+export type LogSource = {
+  source_sheet: string;
+  source_row: number;
+};
+
 export type MapLog = {
   match_id: string;
   map_num: number;
@@ -35,6 +40,9 @@ export type MapLog = {
   winner_team: string;
   losing_team: string;
 };
+
+export type MatchLogIngest = MatchLog & LogSource;
+export type MapLogIngest = MapLog & LogSource;
 
 export type PlayerLogEntry = {
   match_id: string;
@@ -52,6 +60,8 @@ export type PlayerLogEntry = {
   ticks: number | null;
   write_in: string | null;
 };
+
+export type PlayerLogEntryIngest = PlayerLogEntry & LogSource;
 
 export type PlayerLogRow = PlayerLogEntry & {
   id: number;
