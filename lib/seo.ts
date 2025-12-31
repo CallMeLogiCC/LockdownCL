@@ -1,4 +1,4 @@
-import { LEAGUE_TEAMS } from "@/lib/league";
+import { getTeamDefinitionByName } from "@/lib/teams";
 import type { MatchLog } from "@/lib/types";
 
 export const SITE_NAME = "Lockdown CoD League";
@@ -23,11 +23,11 @@ export const getTeamLeagueLabel = (team: string | null) => {
   if (!team) {
     return "Independent";
   }
-  const entry = Object.entries(LEAGUE_TEAMS).find(([, teams]) => teams.includes(team));
-  if (!entry) {
+  const teamDef = getTeamDefinitionByName(team);
+  if (!teamDef) {
     return "Independent";
   }
-  const [league] = entry;
+  const league = teamDef.league;
   return LEAGUE_LABEL_MAP[league] ?? league;
 };
 

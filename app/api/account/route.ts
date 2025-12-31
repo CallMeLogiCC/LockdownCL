@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { getPlayerById, updateUserProfile } from "@/lib/queries";
+import { normalizeSocialHandle } from "@/lib/socials";
 
 const normalize = (value: unknown) => {
   if (typeof value !== "string") {
@@ -23,15 +24,15 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Profile edits are unavailable" }, { status: 403 });
   }
 
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const updated = await updateUserProfile({
     discordId,
     avatarUrl: normalize(body.avatarUrl),
     bannerUrl: normalize(body.bannerUrl),
-    twitterUrl: normalize(body.twitterUrl),
-    twitchUrl: normalize(body.twitchUrl),
-    youtubeUrl: normalize(body.youtubeUrl),
-    tiktokUrl: normalize(body.tiktokUrl)
+    twitterUrl: normalizeSocialHandle("twitter", normalize(body.twitterUrl)),
+    twitchUrl: normalizeSocialHandle("twitch", normalize(body.twitchUrl)),
+    youtubeUrl: normalizeSocialHandle("youtube", normalize(body.youtubeUrl)),
+    tiktokUrl: normalizeSocialHandle("tiktok", normalize(body.tiktokUrl))
   });
 
   if (!updated) {

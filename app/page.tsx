@@ -1,10 +1,5 @@
 import type { Metadata } from "next";
-import { hasDatabaseUrl } from "@/lib/db";
-import { getAllMatches, listPlayersWithStats } from "@/lib/queries";
-import type { StandingRow } from "@/lib/types";
-import { LEAGUE_TEAMS, LeagueKey } from "@/lib/league";
-import PlayerLists from "@/app/components/PlayerLists";
-import StandingsTabs from "@/app/components/StandingsTabs";
+import Link from "next/link";
 import { buildCanonicalUrl, SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
@@ -36,85 +31,7 @@ export const metadata: Metadata = {
   }
 };
 
-const buildStandings = (teams: string[], matches: Awaited<ReturnType<typeof getAllMatches>>) => {
-  const standings = new Map<string, StandingRow>();
-
-  teams.forEach((team) => {
-    standings.set(team, {
-      team,
-      series_wins: 0,
-      series_losses: 0,
-      map_wins: 0,
-      map_losses: 0,
-      map_diff: 0
-    });
-  });
-
-  matches.forEach((match) => {
-    const homeTeam = match.home_team ?? "";
-    const awayTeam = match.away_team ?? "";
-    const homeWins = match.home_wins ?? 0;
-    const awayWins = match.away_wins ?? 0;
-
-    if (standings.has(homeTeam)) {
-      const entry = standings.get(homeTeam)!;
-      entry.map_wins += homeWins;
-      entry.map_losses += awayWins;
-      if (homeWins > awayWins) {
-        entry.series_wins += 1;
-      } else if (homeWins < awayWins) {
-        entry.series_losses += 1;
-      }
-    }
-
-    if (standings.has(awayTeam)) {
-      const entry = standings.get(awayTeam)!;
-      entry.map_wins += awayWins;
-      entry.map_losses += homeWins;
-      if (awayWins > homeWins) {
-        entry.series_wins += 1;
-      } else if (awayWins < homeWins) {
-        entry.series_losses += 1;
-      }
-    }
-  });
-
-  return Array.from(standings.values())
-    .map((entry) => ({
-      ...entry,
-      map_diff: entry.map_wins - entry.map_losses
-    }))
-    .sort((a, b) => {
-      if (a.series_wins !== b.series_wins) {
-        return b.series_wins - a.series_wins;
-      }
-      if (a.map_diff !== b.map_diff) {
-        return b.map_diff - a.map_diff;
-      }
-      return a.team.localeCompare(b.team);
-    });
-};
-
 export default async function HomePage() {
-  if (!hasDatabaseUrl()) {
-    return (
-      <section className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
-        Database is not configured. Please set <code>DATABASE_URL</code> in your Vercel
-        environment variables and redeploy.
-      </section>
-    );
-  }
-
-  const [players, matches] = await Promise.all([listPlayersWithStats(), getAllMatches()]);
-
-  const standings = (Object.keys(LEAGUE_TEAMS) as LeagueKey[]).reduce(
-    (acc, league) => {
-      acc[league] = buildStandings(LEAGUE_TEAMS[league], matches);
-      return acc;
-    },
-    {} as Record<LeagueKey, StandingRow[]>
-  );
-
   return (
     <div className="flex flex-col gap-8">
       <section className="rounded-2xl border border-white/10 bg-white/5 p-8">
@@ -123,10 +40,43 @@ export default async function HomePage() {
           Current-season stats, rosters, and match results powered directly by the official
           LockdownCL database.
         </p>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { label: "Players", href: "/players", detail: "Search every registered player." },
+            { label: "Teams", href: "/teams", detail: "View rosters and team cards." },
+            { label: "Standings", href: "/standings", detail: "Series W-L and map diff." },
+            { label: "Matches", href: "/matches", detail: "Browse match history." },
+            { label: "Account/Profile", href: "/account", detail: "Manage your profile." }
+          ].map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-white/80 transition hover:border-white/30 hover:bg-black/40"
+            >
+              <p className="text-sm font-semibold text-white">{item.label}</p>
+              <p className="mt-2 text-xs text-white/60">{item.detail}</p>
+            </Link>
+          ))}
+        </div>
       </section>
 
-      <PlayerLists players={players} />
-      <StandingsTabs standings={standings} />
+      <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">League overview</h3>
+            <p className="text-sm text-white/70">
+              Lowers, Uppers, Legends, and Womens divisions each track their own standings and
+              match history.
+            </p>
+          </div>
+          <Link
+            href="/standings"
+            className="inline-flex items-center justify-center rounded-full border border-white/20 px-5 py-2 text-xs uppercase tracking-[0.3em] text-white/70 hover:border-white/60"
+          >
+            View standings
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

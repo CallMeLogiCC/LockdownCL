@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { PlayerWithStats } from "@/lib/types";
 import {
   LEAGUE_LABELS,
-  LEAGUE_TEAMS,
   LeagueKey,
   getLeagueForPlayer,
   getPlayerRankForLeague,
@@ -16,7 +15,7 @@ import {
   isFreeAgent,
   isWomensRegistered
 } from "@/lib/league";
-import { slugifyTeam } from "@/lib/slug";
+import { TEAM_DEFS, getTeamDefinitionByName, getTeamsForLeague } from "@/lib/teams";
 
 const formatIgn = (ign: string | null) => (ign && ign.trim() ? ign : "N/A");
 
@@ -64,18 +63,8 @@ const normalize = (value: string | null) => (value ?? "").toLowerCase();
 
 const leagueOptions = ["All", ...LEAGUE_LABELS];
 
-const getTeamOptions = (players: PlayerWithStats[]) => {
-  const teams = new Set<string>();
-  players.forEach((player) => {
-    if (player.team) {
-      teams.add(player.team);
-    }
-    if (player.womens_team) {
-      teams.add(player.womens_team);
-    }
-  });
-  return Array.from(teams).sort((a, b) => a.localeCompare(b));
-};
+const getTeamOptions = () =>
+  TEAM_DEFS.map((team) => team.displayName).sort((a, b) => a.localeCompare(b));
 
 const getStatusOptions = (players: PlayerWithStats[]) => {
   const statuses = new Set<string>();
@@ -97,7 +86,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
   const [statusFilter, setStatusFilter] = useState("All");
   const [teamFilter, setTeamFilter] = useState("All");
 
-  const teamOptions = useMemo(() => getTeamOptions(players), [players]);
+  const teamOptions = useMemo(() => getTeamOptions(), []);
   const statusOptions = useMemo(() => getStatusOptions(players), [players]);
 
   const filteredPlayers = useMemo(() => {
@@ -170,6 +159,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
     const status = getPlayerStatusForLeague(player, leagueKey);
     const rankValue = getPlayerRankForLeague(player, leagueKey);
     const rankIsNa = leagueKey === "Womens" ? rankValue === null : !isCoedRegistered(player);
+    const teamDef = getTeamDefinitionByName(team);
 
     return (
       <tr key={player.discord_id} className="hover:bg-white/5">
@@ -180,7 +170,15 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
         </td>
         <td className="px-4 py-3 text-white/70">{formatIgn(player.ign)}</td>
         <td className="px-4 py-3 text-white/70">{formatRank(rankValue, rankIsNa)}</td>
-        <td className="px-4 py-3 text-white/70">{team ?? "—"}</td>
+        <td className="px-4 py-3 text-white/70">
+          {teamDef ? (
+            <Link href={`/teams/${teamDef.slug}`} className="text-white/80 hover:text-white">
+              {teamDef.displayName}
+            </Link>
+          ) : (
+            team ?? "—"
+          )}
+        </td>
         <td className="px-4 py-3 text-white/70">{status ?? "—"}</td>
         <td className="px-4 py-3 text-white/70">
           {formatKd(player.total_k, player.total_d)}
@@ -275,7 +273,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
       {activeView === "teams" ? (
         <div className="mt-6 space-y-8">
           {LEAGUE_LABELS.map((league) => {
-            const teams = LEAGUE_TEAMS[league];
+            const teams = getTeamsForLeague(league);
             return (
               <div key={league} className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -290,12 +288,12 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
                       if (league === "Womens") {
                         return (
                           isWomensRegistered(player) &&
-                          player.womens_team === team &&
+                          player.womens_team === team.displayName &&
                           player.women_status?.toLowerCase() !== "free agent"
                         );
                       }
                       return (
-                        player.team === team &&
+                        player.team === team.displayName &&
                         !isFormerPlayer(player) &&
                         isCoedRegistered(player) &&
                         player.status?.toLowerCase() !== "free agent"
@@ -304,12 +302,12 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
 
                     return (
                       <div
-                        key={team}
+                        key={team.slug}
                         className="rounded-2xl border border-white/10 bg-black/20 p-4"
                       >
                         <div className="flex items-center justify-between">
-                          <Link href={`/teams/${slugifyTeam(team)}`} className="text-white">
-                            <h4 className="text-base font-semibold">{team}</h4>
+                          <Link href={`/teams/${team.slug}`} className="text-white">
+                            <h4 className="text-base font-semibold">{team.displayName}</h4>
                           </Link>
                           <span className="text-xs text-white/50">{roster.length} players</span>
                         </div>

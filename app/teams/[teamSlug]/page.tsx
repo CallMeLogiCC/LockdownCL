@@ -2,13 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { hasDatabaseUrl } from "@/lib/db";
-import {
-  getAllTeams,
-  getMatchesByTeam,
-  getTeamModeWinRates,
-  getTeamRoster
-} from "@/lib/queries";
-import { findTeamBySlug } from "@/lib/slug";
+import { getMatchesByTeam, getTeamModeWinRates, getTeamRoster } from "@/lib/queries";
 import type { PlayerWithStats, TeamModeWinRateRow } from "@/lib/types";
 import JsonLd from "@/app/components/JsonLd";
 import {
@@ -17,6 +11,8 @@ import {
   getTeamLeagueLabel,
   SITE_NAME
 } from "@/lib/seo";
+import { getTeamDefinitionBySlug } from "@/lib/teams";
+import TeamLogo from "@/app/components/TeamLogo";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +27,10 @@ export async function generateMetadata({
     };
   }
 
-  const teamNames = await getAllTeams();
-  const team = findTeamBySlug(params.teamSlug, teamNames);
+  const teamDef = getTeamDefinitionBySlug(params.teamSlug);
+  const team = teamDef?.displayName ?? null;
 
-  if (!team) {
+  if (!teamDef || !team) {
     return {
       title: { absolute: `Not Found | ${SITE_NAME}` },
       robots: {
@@ -145,10 +141,10 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
     );
   }
 
-  const teamNames = await getAllTeams();
-  const team = findTeamBySlug(params.teamSlug, teamNames);
+  const teamDef = getTeamDefinitionBySlug(params.teamSlug);
+  const team = teamDef?.displayName ?? null;
 
-  if (!team) {
+  if (!teamDef || !team) {
     notFound();
   }
 
@@ -177,15 +173,25 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
       />
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-white/50">Team</p>
-            <h2 className="text-2xl font-semibold text-white">{team}</h2>
-            <p className="mt-2 text-sm text-white/70">
-              Series record: {record.seriesWins}-{record.seriesLosses} · Map diff: {record.mapDiff}
-            </p>
+          <div className="flex items-center gap-4">
+            <TeamLogo
+              teamSlug={teamDef.slug}
+              league={teamDef.league}
+              alt={`${teamDef.displayName} logo`}
+              size={64}
+              className="h-16 w-16 rounded-2xl border border-white/10 bg-black/40 object-cover"
+            />
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-white/50">Team</p>
+              <h2 className="text-2xl font-semibold text-white">{team}</h2>
+              <p className="mt-2 text-sm text-white/70">
+                Series record: {record.seriesWins}-{record.seriesLosses} · Map diff:{" "}
+                {record.mapDiff}
+              </p>
+            </div>
           </div>
-          <Link href="/" className="text-sm">
-            ← Back to home
+          <Link href="/teams" className="text-sm">
+            ← Back to teams
           </Link>
         </div>
         <div className="mt-4 grid gap-3 text-sm text-white/70 md:grid-cols-3">

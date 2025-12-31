@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { UserProfile, Player } from "@/lib/types";
+import { normalizeSocialHandle } from "@/lib/socials";
 
 type Props = {
   discordId: string;
@@ -14,6 +15,8 @@ type Props = {
 };
 
 const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+const MAX_BANNER_SIZE = 5 * 1024 * 1024;
 
 const normalizeUrl = (value: string) => {
   const trimmed = value.trim();
@@ -30,10 +33,18 @@ export default function AccountProfileClient({
 }: Props) {
   const [avatarUrl, setAvatarUrl] = useState(userProfile?.avatar_url ?? "");
   const [bannerUrl, setBannerUrl] = useState(userProfile?.banner_url ?? "");
-  const [twitterUrl, setTwitterUrl] = useState(userProfile?.twitter_url ?? "");
-  const [twitchUrl, setTwitchUrl] = useState(userProfile?.twitch_url ?? "");
-  const [youtubeUrl, setYoutubeUrl] = useState(userProfile?.youtube_url ?? "");
-  const [tiktokUrl, setTiktokUrl] = useState(userProfile?.tiktok_url ?? "");
+  const [twitterUrl, setTwitterUrl] = useState(
+    normalizeSocialHandle("twitter", userProfile?.twitter_url ?? "") ?? ""
+  );
+  const [twitchUrl, setTwitchUrl] = useState(
+    normalizeSocialHandle("twitch", userProfile?.twitch_url ?? "") ?? ""
+  );
+  const [youtubeUrl, setYoutubeUrl] = useState(
+    normalizeSocialHandle("youtube", userProfile?.youtube_url ?? "") ?? ""
+  );
+  const [tiktokUrl, setTiktokUrl] = useState(
+    normalizeSocialHandle("tiktok", userProfile?.tiktok_url ?? "") ?? ""
+  );
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -50,6 +61,15 @@ export default function AccountProfileClient({
       setError("Only JPG, PNG, and WebP images are supported");
       return;
     }
+    const maxSize = type === "avatar" ? MAX_AVATAR_SIZE : MAX_BANNER_SIZE;
+    if (file.size > maxSize) {
+      setError(
+        type === "avatar"
+          ? "Avatar images must be 2MB or smaller"
+          : "Banner images must be 5MB or smaller"
+      );
+      return;
+    }
 
     const formData = new FormData();
     formData.append("file", file);
@@ -59,7 +79,7 @@ export default function AccountProfileClient({
         method: "POST",
         body: formData
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data?.error ?? "Upload failed");
       }
@@ -87,13 +107,13 @@ export default function AccountProfileClient({
         body: JSON.stringify({
           avatarUrl: normalizeUrl(avatarUrl),
           bannerUrl: normalizeUrl(bannerUrl),
-          twitterUrl: normalizeUrl(twitterUrl),
-          twitchUrl: normalizeUrl(twitchUrl),
-          youtubeUrl: normalizeUrl(youtubeUrl),
-          tiktokUrl: normalizeUrl(tiktokUrl)
+          twitterUrl: normalizeSocialHandle("twitter", twitterUrl),
+          twitchUrl: normalizeSocialHandle("twitch", twitchUrl),
+          youtubeUrl: normalizeSocialHandle("youtube", youtubeUrl),
+          tiktokUrl: normalizeSocialHandle("tiktok", tiktokUrl)
         })
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data?.error ?? "Unable to save profile");
       }
@@ -201,8 +221,11 @@ export default function AccountProfileClient({
               <input
                 value={twitterUrl}
                 onChange={(event) => setTwitterUrl(event.target.value)}
+                onBlur={(event) => {
+                  setTwitterUrl(normalizeSocialHandle("twitter", event.target.value) ?? "");
+                }}
                 disabled={!canEdit}
-                placeholder="https://twitter.com/username"
+                placeholder="handle (no @)"
                 className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
               />
             </div>
@@ -211,8 +234,11 @@ export default function AccountProfileClient({
               <input
                 value={twitchUrl}
                 onChange={(event) => setTwitchUrl(event.target.value)}
+                onBlur={(event) => {
+                  setTwitchUrl(normalizeSocialHandle("twitch", event.target.value) ?? "");
+                }}
                 disabled={!canEdit}
-                placeholder="https://twitch.tv/username"
+                placeholder="handle"
                 className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
               />
             </div>
@@ -221,8 +247,11 @@ export default function AccountProfileClient({
               <input
                 value={youtubeUrl}
                 onChange={(event) => setYoutubeUrl(event.target.value)}
+                onBlur={(event) => {
+                  setYoutubeUrl(normalizeSocialHandle("youtube", event.target.value) ?? "");
+                }}
                 disabled={!canEdit}
-                placeholder="https://youtube.com/@channel"
+                placeholder="handle"
                 className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
               />
             </div>
@@ -231,8 +260,11 @@ export default function AccountProfileClient({
               <input
                 value={tiktokUrl}
                 onChange={(event) => setTiktokUrl(event.target.value)}
+                onBlur={(event) => {
+                  setTiktokUrl(normalizeSocialHandle("tiktok", event.target.value) ?? "");
+                }}
                 disabled={!canEdit}
-                placeholder="https://tiktok.com/@username"
+                placeholder="handle"
                 className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
               />
             </div>

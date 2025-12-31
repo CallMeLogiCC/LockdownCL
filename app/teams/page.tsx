@@ -1,8 +1,10 @@
-import Link from "next/link";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { hasDatabaseUrl } from "@/lib/db";
-import { getAllTeams } from "@/lib/queries";
-import { slugifyTeam } from "@/lib/slug";
+import { getAllMatches } from "@/lib/queries";
+import { LEAGUE_LABELS } from "@/lib/league";
+import TeamLogo from "@/app/components/TeamLogo";
+import { buildStandingsByLeague } from "@/lib/standings";
 import { buildCanonicalUrl, SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +46,8 @@ export default async function TeamsPage() {
     );
   }
 
-  const teams = await getAllTeams();
+  const matches = await getAllMatches();
+  const standings = buildStandingsByLeague(matches);
 
   return (
     <section className="flex flex-col gap-6">
@@ -55,16 +58,41 @@ export default async function TeamsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {teams.map((team) => (
-          <Link
-            key={team}
-            href={`/teams/${slugifyTeam(team)}`}
-            className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white hover:bg-white/10"
-          >
-            <h3 className="text-lg font-semibold">{team}</h3>
-            <p className="text-xs text-white/60">View roster and match history →</p>
-          </Link>
+      <div className="grid gap-8">
+        {LEAGUE_LABELS.map((league) => (
+          <div key={league} className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-white">{league} League</h3>
+              <span className="text-xs uppercase tracking-[0.3em] text-white/50">
+                {standings[league].length} squads
+              </span>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {standings[league].map((team) => (
+                <Link
+                  key={team.team}
+                  href={`/teams/${team.teamSlug}`}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white transition hover:bg-white/10"
+                >
+                  <div className="flex items-center gap-4">
+                    <TeamLogo
+                      teamSlug={team.teamSlug}
+                      league={team.league}
+                      alt={`${team.team} logo`}
+                      size={48}
+                      className="h-12 w-12 rounded-2xl border border-white/10 bg-black/40 object-cover"
+                    />
+                    <div className="flex-1">
+                      <h4 className="text-base font-semibold">{team.team}</h4>
+                      <p className="mt-1 text-xs text-white/60">
+                        Record {team.series_wins}-{team.series_losses} · Map diff {team.map_diff}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </section>
