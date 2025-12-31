@@ -1,4 +1,4 @@
-import type { PlayerWithStats } from "@/lib/types";
+import type { Player, PlayerWithStats } from "@/lib/types";
 
 export const LOWER_TEAMS = [
   "Aegis",
@@ -79,11 +79,20 @@ export const isFreeAgent = (player: PlayerWithStats) =>
 export const isCoedRegistered = (player: PlayerWithStats) =>
   !player.rank_is_na && player.rank_value !== null;
 
-export const isWomensRegistered = (player: PlayerWithStats) => {
+type WomensEligibility = Pick<Player, "women_status" | "womens_rank" | "womens_team">;
+
+const isNonEmptyTeam = (team: string | null) => {
+  if (!team) {
+    return false;
+  }
+  return team.trim().toLowerCase() !== "na";
+};
+
+export const isWomensRegistered = (player: WomensEligibility) => {
   if (player.women_status?.toLowerCase() === "unregistered") {
     return false;
   }
-  return player.womens_rank !== null;
+  return player.womens_rank !== null && isNonEmptyTeam(player.womens_team);
 };
 
 export const isWomensEligible = isWomensRegistered;
@@ -121,4 +130,4 @@ export const getPlayerRankForLeague = (player: PlayerWithStats, league: LeagueKe
   league === "Womens" ? player.womens_rank : player.rank_value;
 
 export const getPlayerStatusForLeague = (player: PlayerWithStats, league: LeagueKey) =>
-  league === "Womens" ? player.women_status ?? player.status : player.status;
+  league === "Womens" ? player.women_status : player.status;

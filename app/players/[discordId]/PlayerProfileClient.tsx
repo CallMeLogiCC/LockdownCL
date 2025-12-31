@@ -10,7 +10,7 @@ import type {
   Player,
   UserProfile
 } from "@/lib/types";
-import { getLeagueForRank } from "@/lib/league";
+import { getLeagueForRank, isWomensRegistered } from "@/lib/league";
 import { buildSocialUrl, normalizeSocialHandle } from "@/lib/socials";
 import { getTeamDefinitionByName } from "@/lib/teams";
 import TeamLogo from "@/app/components/TeamLogo";
@@ -124,7 +124,7 @@ export default function PlayerProfileClient({
   );
 
   const coedLeague = getLeagueForRank(profile.rank_value, profile.rank_is_na);
-  const womensRegistered = profile.womens_rank !== null;
+  const womensRegistered = isWomensRegistered(profile);
 
   const socialLinks = [
     {
@@ -307,7 +307,7 @@ export default function PlayerProfileClient({
                         <span className="text-white/40">·</span>
                         <span>Rank {womensRankDisplay}</span>
                         <span className="text-white/40">·</span>
-                        <span>{profile.women_status ?? profile.status ?? "—"}</span>
+                        <span>{profile.women_status ?? "—"}</span>
                       </div>
                     </div>
                   ) : null}

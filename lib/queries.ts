@@ -2,11 +2,14 @@ import { cache } from "react";
 import { getPool } from "@/lib/db";
 import type {
   MapLog,
+  MapLogIngest,
   MatchLog,
+  MatchLogIngest,
   MatchPlayerRow,
   Player,
   PlayerAggregates,
   PlayerLogEntry,
+  PlayerLogEntryIngest,
   PlayerLogRow,
   PlayerMapBreakdown,
   PlayerMatchHistoryEntry,
@@ -18,6 +21,7 @@ import type {
   UserProfile,
   TeamModeWinRateRow
 } from "@/lib/types";
+import type { LeagueKey } from "@/lib/league";
 import { TEAM_DEFS } from "@/lib/teams";
 
 export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
@@ -752,9 +756,11 @@ export async function getMatchPlayerRows(matchId: string): Promise<MatchPlayerRo
   return rows as MatchPlayerRow[];
 }
 
-export async function getTeamRoster(team: string): Promise<PlayerWithStats[]> {
-  const { rows } = await getPool().query(
-    `
+export async function getTeamRoster(
+  team: string,
+  league: LeagueKey
+): Promise<PlayerWithStats[]> {
+  const baseQuery = `
     select
       po.discord_name,
       po.discord_id,
@@ -781,15 +787,30 @@ export async function getTeamRoster(team: string): Promise<PlayerWithStats[]> {
       from player_log
       group by discord_id
     ) stats on stats.discord_id = po.discord_id
+  `;
+
+  const coedFilter = `
     where po.team = $1
       and coalesce(po.status, '') != 'Free Agent'
       and not (po.team = 'Former Player' and po.status = 'Unregistered')
       and po.rank_is_na = false
       and po.rank_value is not null
+  `;
+
+  const womensFilter = `
+    where po.womens_team = $1
+      and po.womens_rank is not null
+      and coalesce(lower(po.women_status), '') != 'unregistered'
+      and coalesce(lower(po.womens_team), '') != 'na'
+  `;
+
+  const query = `
+    ${baseQuery}
+    ${league === "Womens" ? womensFilter : coedFilter}
     order by po.discord_name
-    `,
-    [team]
-  );
+  `;
+
+  const { rows } = await getPool().query(query, [team]);
 
   return rows as PlayerWithStats[];
 }
@@ -872,9 +893,16 @@ export async function listMatchesForSitemap(): Promise<
   return rows as Array<{ match_id: string; match_date: string | null }>;
 }
 
-export async function upsertPlayers(players: Player[]): Promise<number> {
+type UpsertCounts = { inserted: number; updated: number };
+
+const countUpserts = (rows: Array<{ inserted: boolean }>): UpsertCounts => {
+  const inserted = rows.filter((row) => row.inserted).length;
+  return { inserted, updated: rows.length - inserted };
+};
+
+export async function upsertPlayers(players: Player[]): Promise<UpsertCounts> {
   if (players.length === 0) {
-    return 0;
+    return { inserted: 0, updated: 0 };
   }
 
   const values: Array<string | number | boolean | null> = [];
@@ -910,20 +938,21 @@ export async function upsertPlayers(players: Player[]): Promise<number> {
       women_status = excluded.women_status,
       womens_team = excluded.womens_team,
       womens_rank = excluded.womens_rank
+    returning (xmax = 0) as inserted
   `;
 
   const result = await getPool().query(query, values);
-  return result.rowCount ?? 0;
+  return countUpserts(result.rows as Array<{ inserted: boolean }>);
 }
 
-export async function upsertSeries(series: MatchLog[]): Promise<number> {
+export async function upsertSeries(series: MatchLogIngest[]): Promise<UpsertCounts> {
   if (series.length === 0) {
-    return 0;
+    return { inserted: 0, updated: 0 };
   }
 
   const values: Array<string | number | null> = [];
   const rows = series.map((match, index) => {
-    const offset = index * 7;
+    const offset = index * 9;
     values.push(
       match.match_id,
       match.match_date,
@@ -931,72 +960,83 @@ export async function upsertSeries(series: MatchLog[]): Promise<number> {
       match.away_team,
       match.home_wins,
       match.away_wins,
-      match.series_winner
+      match.series_winner,
+      match.source_sheet,
+      match.source_row
     );
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`;
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`;
   });
 
   const query = `
     insert into match_log
-      (match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner)
+      (match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner, source_sheet, source_row)
     values ${rows.join(", ")}
-    on conflict (match_id)
+    on conflict (source_sheet, source_row)
     do update set
       match_date = excluded.match_date,
+      match_id = excluded.match_id,
       home_team = excluded.home_team,
       away_team = excluded.away_team,
       home_wins = excluded.home_wins,
       away_wins = excluded.away_wins,
       series_winner = excluded.series_winner
+    returning (xmax = 0) as inserted
   `;
 
   const result = await getPool().query(query, values);
-  return result.rowCount ?? 0;
+  return countUpserts(result.rows as Array<{ inserted: boolean }>);
 }
 
-export async function upsertMaps(maps: MapLog[]): Promise<number> {
+export async function upsertMaps(maps: MapLogIngest[]): Promise<UpsertCounts> {
   if (maps.length === 0) {
-    return 0;
+    return { inserted: 0, updated: 0 };
   }
 
   const values: Array<string | number> = [];
   const rows = maps.map((map, index) => {
-    const offset = index * 6;
+    const offset = index * 8;
     values.push(
       map.match_id,
       map.map_num,
       map.mode,
       map.map,
       map.winner_team,
-      map.losing_team
+      map.losing_team,
+      map.source_sheet,
+      map.source_row
     );
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`;
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
   });
 
   const query = `
     insert into map_log
-      (match_id, map_num, mode, map, winner_team, losing_team)
+      (match_id, map_num, mode, map, winner_team, losing_team, source_sheet, source_row)
     values ${rows.join(", ")}
-    on conflict (match_id, map_num)
+    on conflict (source_sheet, source_row)
     do update set
+      match_id = excluded.match_id,
+      map_num = excluded.map_num,
       mode = excluded.mode,
       map = excluded.map,
       winner_team = excluded.winner_team,
       losing_team = excluded.losing_team
+    returning (xmax = 0) as inserted
   `;
 
   const result = await getPool().query(query, values);
-  return result.rowCount ?? 0;
+  return countUpserts(result.rows as Array<{ inserted: boolean }>);
 }
 
-export async function insertPlayerLogEntries(entries: PlayerLogEntry[]): Promise<number> {
+export async function upsertPlayerLogEntries(
+  entries: PlayerLogEntryIngest[]
+): Promise<UpsertCounts> {
   if (entries.length === 0) {
-    return 0;
+    return { inserted: 0, updated: 0 };
   }
 
   const values: Array<string | number | null> = [];
   const rows = entries.map((entry, index) => {
-    const offset = index * 14;
+    const offset = index * 16;
     values.push(
       entry.match_id,
       entry.match_date,
@@ -1011,17 +1051,36 @@ export async function insertPlayerLogEntries(entries: PlayerLogEntry[]): Promise
       entry.plants,
       entry.defuses,
       entry.ticks,
-      entry.write_in
+      entry.write_in,
+      entry.source_sheet,
+      entry.source_row
     );
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14})`;
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16})`;
   });
 
   const query = `
     insert into player_log
-      (match_id, match_date, team, player, discord_id, mode, k, d, kd, hp_time, plants, defuses, ticks, write_in)
+      (match_id, match_date, team, player, discord_id, mode, k, d, kd, hp_time, plants, defuses, ticks, write_in, source_sheet, source_row)
     values ${rows.join(", ")}
+    on conflict (source_sheet, source_row)
+    do update set
+      match_id = excluded.match_id,
+      match_date = excluded.match_date,
+      team = excluded.team,
+      player = excluded.player,
+      discord_id = excluded.discord_id,
+      mode = excluded.mode,
+      k = excluded.k,
+      d = excluded.d,
+      kd = excluded.kd,
+      hp_time = excluded.hp_time,
+      plants = excluded.plants,
+      defuses = excluded.defuses,
+      ticks = excluded.ticks,
+      write_in = excluded.write_in
+    returning (xmax = 0) as inserted
   `;
 
   const result = await getPool().query(query, values);
-  return result.rowCount ?? 0;
+  return countUpserts(result.rows as Array<{ inserted: boolean }>);
 }

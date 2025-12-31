@@ -16,7 +16,10 @@ create table if not exists player_log (
   plants integer,
   defuses integer,
   ticks integer,
-  write_in text
+  write_in text,
+  source_sheet text not null,
+  source_row integer not null,
+  unique (source_sheet, source_row)
 );
 
 create index if not exists player_log_match_id_idx on player_log (match_id);
@@ -33,6 +36,9 @@ create table if not exists map_log (
   map text not null,
   winner_team text not null,
   losing_team text not null,
+  source_sheet text not null,
+  source_row integer not null,
+  unique (source_sheet, source_row),
   unique (match_id, map_num)
 );
 
@@ -46,7 +52,10 @@ create table if not exists match_log (
   away_team text,
   home_wins integer,
   away_wins integer,
-  series_winner text
+  series_winner text,
+  source_sheet text not null,
+  source_row integer not null,
+  unique (source_sheet, source_row)
 );
 
 create table if not exists player_ovr (
