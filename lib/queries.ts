@@ -18,6 +18,7 @@ import type {
   UserProfile,
   TeamModeWinRateRow
 } from "@/lib/types";
+import { TEAM_DEFS } from "@/lib/teams";
 
 export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
   const { rows } = await getPool().query(
@@ -812,20 +813,7 @@ export async function getTeamModeWinRates(team: string): Promise<TeamModeWinRate
 }
 
 export async function getAllTeams(): Promise<string[]> {
-  const { rows } = await getPool().query(
-    `
-    select distinct team_name from (
-      select team as team_name from player_ovr where team is not null
-      union
-      select home_team as team_name from match_log where home_team is not null
-      union
-      select away_team as team_name from match_log where away_team is not null
-    ) teams
-    order by team_name
-    `
-  );
-
-  return rows.map((row: { team_name: string }) => row.team_name);
+  return TEAM_DEFS.map((team) => team.displayName);
 }
 
 export async function listPlayersForSitemap(): Promise<
@@ -849,24 +837,22 @@ export async function listPlayersForSitemap(): Promise<
 export async function listTeamsForSitemap(): Promise<
   Array<{ team_name: string; last_match_date: string | null }>
 > {
+  const teamNames = TEAM_DEFS.map((team) => team.displayName);
   const { rows } = await getPool().query(
     `
     select
       teams.team_name,
       max(match_log.match_date) as last_match_date
     from (
-      select team as team_name from player_ovr where team is not null
-      union
-      select home_team as team_name from match_log where home_team is not null
-      union
-      select away_team as team_name from match_log where away_team is not null
+      select unnest($1::text[]) as team_name
     ) teams
     left join match_log
       on match_log.home_team = teams.team_name
       or match_log.away_team = teams.team_name
     group by teams.team_name
     order by teams.team_name
-    `
+    `,
+    [teamNames]
   );
 
   return rows as Array<{ team_name: string; last_match_date: string | null }>;

@@ -4,10 +4,10 @@ import { getSafeAuthSession } from "@/lib/auth";
 import SignInButton from "@/app/components/SignInButton";
 
 const leagues = [
-  { label: "Lowers", href: "/?league=Lowers#standings" },
-  { label: "Uppers", href: "/?league=Uppers#standings" },
-  { label: "Legends", href: "/?league=Legends#standings" },
-  { label: "Women", href: "/?league=Womens#standings" }
+  { label: "Lowers", href: "/standings?league=Lowers" },
+  { label: "Uppers", href: "/standings?league=Uppers" },
+  { label: "Legends", href: "/standings?league=Legends" },
+  { label: "Women", href: "/standings?league=Womens" }
 ];
 
 export default async function SiteHeader() {
@@ -36,6 +36,7 @@ export default async function SiteHeader() {
           <Link href="/">Home</Link>
           <Link href="/players">Players</Link>
           <Link href="/teams">Teams</Link>
+          <Link href="/standings">Standings</Link>
           <div className="group relative">
             <button
               type="button"
@@ -74,6 +75,7 @@ export default async function SiteHeader() {
           <Link href="/">Home</Link>
           <Link href="/players">Players</Link>
           <Link href="/teams">Teams</Link>
+          <Link href="/standings">Standings</Link>
         </div>
         <div className="flex flex-wrap gap-3">
           {leagues.map((league) => (

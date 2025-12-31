@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { hasDatabaseUrl } from "@/lib/db";
-import { getAllTeams, getMatchesByTeam } from "@/lib/queries";
-import { findTeamBySlug } from "@/lib/slug";
+import { getMatchesByTeam } from "@/lib/queries";
 import { computeTeamRecord, getTeamLeagueLabel } from "@/lib/seo";
+import { getTeamDefinitionBySlug } from "@/lib/teams";
 
 export const runtime = "nodejs";
 
@@ -18,10 +18,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
 
-  const teamNames = await getAllTeams();
-  const team = findTeamBySlug(slug, teamNames);
+  const teamDef = getTeamDefinitionBySlug(slug);
+  const team = teamDef?.displayName ?? null;
 
-  if (!team) {
+  if (!teamDef || !team) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

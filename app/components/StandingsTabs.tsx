@@ -3,13 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import type { StandingRow } from "@/lib/types";
 import { LEAGUE_LABELS, LeagueKey } from "@/lib/league";
-import { slugifyTeam } from "@/lib/slug";
+import type { StandingRowWithMeta } from "@/lib/standings";
+import TeamLogo from "@/app/components/TeamLogo";
 
-const formatRecord = (row: StandingRow) => `${row.series_wins}-${row.series_losses}`;
+const formatRecord = (row: StandingRowWithMeta) =>
+  `${row.series_wins}-${row.series_losses}`;
 
-export default function StandingsTabs({ standings }: { standings: Record<LeagueKey, StandingRow[]> }) {
+export default function StandingsTabs({
+  standings
+}: {
+  standings: Record<LeagueKey, StandingRowWithMeta[]>;
+}) {
   const searchParams = useSearchParams();
   const leagueFromQuery = useMemo(() => {
     const value = searchParams.get("league");
@@ -76,9 +81,18 @@ export default function StandingsTabs({ standings }: { standings: Record<LeagueK
               standings[activeLeague].map((row) => (
                 <tr key={row.team} className="hover:bg-white/5">
                   <td className="px-4 py-3 text-white">
-                    <Link href={`/teams/${slugifyTeam(row.team)}`} className="font-semibold">
-                      {row.team}
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <TeamLogo
+                        teamSlug={row.teamSlug}
+                        league={row.league}
+                        alt={`${row.team} logo`}
+                        size={28}
+                        className="h-7 w-7 rounded-full border border-white/10 bg-white/5"
+                      />
+                      <Link href={`/teams/${row.teamSlug}`} className="font-semibold">
+                        {row.team}
+                      </Link>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-white/70">{formatRecord(row)}</td>
                   <td className="px-4 py-3 text-white/70">{row.map_diff}</td>
