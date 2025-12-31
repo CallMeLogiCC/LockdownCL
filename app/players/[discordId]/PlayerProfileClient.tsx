@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type {
   PlayerAggregates,
-  PlayerMapBreakdown,
-  PlayerMatchHistoryEntry,
   Player,
   UserProfile
 } from "@/lib/types";
@@ -14,8 +12,10 @@ import { getLeagueForRank, isWomensRegistered } from "@/lib/league";
 import { buildSocialUrl, normalizeSocialHandle } from "@/lib/socials";
 import { getTeamDefinitionByName } from "@/lib/teams";
 import TeamLogo from "@/app/components/TeamLogo";
+import type { PlayerSeasonDashboard } from "@/lib/queries";
 
 const seasons = ["Season 0", "Season 1", "Season 2", "Lifetime"] as const;
+const lifetimeTabs = ["BO6", "BO7", "All"] as const;
 
 const formatKd = (kills: number, deaths: number) => {
   if (kills === 0 && deaths === 0) {
@@ -29,9 +29,18 @@ const formatKd = (kills: number, deaths: number) => {
 
 const formatRecord = (wins: number, losses: number) => `${wins}-${losses}`;
 
-const formatModeLabel = (mode: string) => (mode === "Control" ? "Overload" : mode);
+const formatModeLabel = (mode: string, season: number | null) => {
+  if (season === 2 && mode === "Control") {
+    return "Overload";
+  }
+  if (mode === "Overload") {
+    return "Overload";
+  }
+  return mode;
+};
 
-const formatModeShort = (mode: string) => (mode === "Control" ? "OVRLD" : mode);
+const formatModeShort = (mode: string) =>
+  mode === "Control" || mode === "Overload" ? "OVRLD" : mode;
 
 const formatMatchDate = (value: string | null) => {
   if (!value) {
@@ -60,18 +69,6 @@ const formatRank = (rankValue: number | string | null, isNa: boolean) => {
 const renderModeStat = (modeStats: PlayerAggregates["modes"], mode: string) =>
   modeStats[mode] ?? { kills: 0, deaths: 0, map_wins: 0, map_losses: 0 };
 
-const placeholderBreakdowns = (breakdowns: PlayerMapBreakdown[]) =>
-  breakdowns.map((breakdown) => ({
-    ...breakdown,
-    maps: breakdown.maps.map((map) => ({
-      ...map,
-      kills: 0,
-      deaths: 0,
-      wins: 0,
-      losses: 0
-    }))
-  }));
-
 const StatTile = ({
   label,
   value,
@@ -97,22 +94,21 @@ const EmptyState = ({ title, message }: { title: string; message: string }) => (
 
 export default function PlayerProfileClient({
   profile,
-  aggregates,
-  mapBreakdowns,
-  matchHistory,
+  seasonDashboard,
   userProfile,
   showPrivateWarning,
-  showEditShortcut
+  showEditShortcut,
+  isAdmin
 }: {
   profile: Player;
-  aggregates: PlayerAggregates;
-  mapBreakdowns: PlayerMapBreakdown[];
-  matchHistory: PlayerMatchHistoryEntry[];
+  seasonDashboard: PlayerSeasonDashboard;
   userProfile: UserProfile | null;
   showPrivateWarning: boolean;
   showEditShortcut: boolean;
+  isAdmin: boolean;
 }) {
   const [season, setSeason] = useState<(typeof seasons)[number]>("Season 2");
+  const [lifetimeTab, setLifetimeTab] = useState<(typeof lifetimeTabs)[number]>("All");
 
   const rankDisplay = useMemo(
     () => formatRank(profile.rank_value, profile.rank_is_na),
@@ -157,26 +153,36 @@ export default function PlayerProfileClient({
     }
   ].filter((link): link is { label: string; url: string } => Boolean(link.url));
 
-  const season2Breakdowns = mapBreakdowns;
-  const lifetimeBreakdowns = placeholderBreakdowns(mapBreakdowns);
-
-  const isSeason2 = season === "Season 2";
   const isLifetime = season === "Lifetime";
-  const noHistorySeason = season === "Season 0" || season === "Season 1";
+  const seasonNumber =
+    season === "Season 0" ? 0 : season === "Season 1" ? 1 : season === "Season 2" ? 2 : null;
 
-  // Lifetime aggregation note:
-  // KD should be computed as total_kills / total_deaths (not average of per-season KDs).
-  // Win% should be computed as total_wins / total_games (not average of per-season win%).
+  const seasonData = seasonNumber !== null ? seasonDashboard.seasons[seasonNumber] : null;
+  const lifetimeStats = seasonDashboard.lifetime;
+
+  const aggregates = seasonData?.aggregates ?? lifetimeStats.all.aggregates;
+  const matchHistory = isLifetime
+    ? seasonDashboard.lifetimeMatchHistory
+    : seasonData?.matchHistory ?? [];
+
+  const lifetimeTabStats =
+    lifetimeTab === "BO6" ? lifetimeStats.bo6 : lifetimeTab === "BO7" ? lifetimeStats.bo7 : null;
+  const activeAggregates = isLifetime && lifetimeTab !== "All" ? lifetimeTabStats?.aggregates : aggregates;
+  const activeBreakdowns =
+    isLifetime && lifetimeTab !== "All" ? lifetimeTabStats?.mapBreakdowns ?? [] : seasonData?.mapBreakdowns ?? [];
+
   const overallRecord = `${formatRecord(
-    aggregates.overall.series_wins,
-    aggregates.overall.series_losses
-  )} • ${formatRecord(aggregates.overall.map_wins, aggregates.overall.map_losses)}`;
+    activeAggregates?.overall.series_wins ?? 0,
+    activeAggregates?.overall.series_losses ?? 0
+  )} • ${formatRecord(
+    activeAggregates?.overall.map_wins ?? 0,
+    activeAggregates?.overall.map_losses ?? 0
+  )}`;
 
-  const hpStats = renderModeStat(aggregates.modes, "Hardpoint");
-  const sndStats = renderModeStat(aggregates.modes, "SnD");
-  const ctrlStats = renderModeStat(aggregates.modes, "Control");
-
-  const displayedBreakdowns = isSeason2 ? season2Breakdowns : lifetimeBreakdowns;
+  const hpStats = renderModeStat(activeAggregates?.modes ?? {}, "Hardpoint");
+  const sndStats = renderModeStat(activeAggregates?.modes ?? {}, "SnD");
+  const ctrlStats = renderModeStat(activeAggregates?.modes ?? {}, "Control");
+  const overloadStats = renderModeStat(activeAggregates?.modes ?? {}, "Overload");
 
   return (
     <section className="flex flex-col gap-6">
@@ -350,123 +356,121 @@ export default function PlayerProfileClient({
         ))}
       </div>
 
-      {noHistorySeason ? (
-        <EmptyState
-          title="No history found for this season yet."
-          message="Check back once historical stats are available for this season."
-        />
-      ) : (
-        <>
-          {isLifetime ? (
-            <EmptyState
-              title="Lifetime stats are coming soon"
-              message="Lifetime aggregation will include archived seasons. We'll surface combined KD and win rates once the data is backfilled."
-            />
-          ) : null}
+      {isLifetime ? (
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {lifetimeTabs.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setLifetimeTab(tab)}
+              className={`rounded-full border px-4 py-2 text-xs uppercase tracking-[0.3em] transition ${
+                lifetimeTab === tab
+                  ? "border-white/40 bg-white/10 text-white"
+                  : "border-white/10 bg-white/5 text-white/50 hover:text-white"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-          <div className="grid gap-4 md:grid-cols-4">
+      {activeAggregates ? (
+        <>
+          <div className={`grid gap-4 ${isLifetime && lifetimeTab === "All" ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
             <StatTile
               label="Overall KD"
-              value={
-                isSeason2
-                  ? formatKd(aggregates.overall.kills, aggregates.overall.deaths)
-                  : "—"
-              }
-              sublabel={
-                isSeason2
-                  ? `${aggregates.overall.kills} K • ${aggregates.overall.deaths} D`
-                  : ""
-              }
+              value={formatKd(activeAggregates.overall.kills, activeAggregates.overall.deaths)}
+              sublabel={`${activeAggregates.overall.kills} K • ${activeAggregates.overall.deaths} D`}
             />
-            <StatTile
-              label="Overall W/L"
-              value={isSeason2 ? overallRecord : "—"}
-              sublabel={isSeason2 ? "Series W-L • Maps W-L" : ""}
-            />
-            <StatTile
-              label="HP KD"
-              value={isSeason2 ? formatKd(hpStats.kills, hpStats.deaths) : "—"}
-            />
+            <StatTile label="Overall W/L" value={overallRecord} sublabel="Series W-L • Maps W-L" />
+            <StatTile label="HP KD" value={formatKd(hpStats.kills, hpStats.deaths)} />
             <StatTile
               label="HP W/L"
-              value={
-                isSeason2
-                  ? formatRecord(hpStats.map_wins, hpStats.map_losses)
-                  : "—"
-              }
+              value={formatRecord(hpStats.map_wins, hpStats.map_losses)}
             />
-            <StatTile
-              label="SnD KD"
-              value={isSeason2 ? formatKd(sndStats.kills, sndStats.deaths) : "—"}
-            />
+            <StatTile label="SnD KD" value={formatKd(sndStats.kills, sndStats.deaths)} />
             <StatTile
               label="SnD W/L"
-              value={
-                isSeason2
-                  ? formatRecord(sndStats.map_wins, sndStats.map_losses)
-                  : "—"
-              }
+              value={formatRecord(sndStats.map_wins, sndStats.map_losses)}
             />
-            <StatTile
-              label="OVRLD KD"
-              value={isSeason2 ? formatKd(ctrlStats.kills, ctrlStats.deaths) : "—"}
-            />
-            <StatTile
-              label="OVRLD W/L"
-              value={
-                isSeason2
-                  ? formatRecord(ctrlStats.map_wins, ctrlStats.map_losses)
-                  : "—"
-              }
-            />
+            {isLifetime && lifetimeTab === "All" ? (
+              <>
+                <StatTile label="CTRL KD" value={formatKd(ctrlStats.kills, ctrlStats.deaths)} />
+                <StatTile
+                  label="CTRL W/L"
+                  value={formatRecord(ctrlStats.map_wins, ctrlStats.map_losses)}
+                />
+                <StatTile label="OVRLD KD" value={formatKd(overloadStats.kills, overloadStats.deaths)} />
+                <StatTile
+                  label="OVRLD W/L"
+                  value={formatRecord(overloadStats.map_wins, overloadStats.map_losses)}
+                />
+              </>
+            ) : (
+              <>
+                <StatTile
+                  label={seasonNumber === 2 || (isLifetime && lifetimeTab === "BO7") ? "OVRLD KD" : "CTRL KD"}
+                  value={formatKd(ctrlStats.kills, ctrlStats.deaths)}
+                />
+                <StatTile
+                  label={seasonNumber === 2 || (isLifetime && lifetimeTab === "BO7") ? "OVRLD W/L" : "CTRL W/L"}
+                  value={formatRecord(ctrlStats.map_wins, ctrlStats.map_losses)}
+                />
+              </>
+            )}
           </div>
 
-          <div className="grid gap-6">
-            {displayedBreakdowns.map((breakdown) => (
-              <div
-                key={breakdown.mode}
-                className="rounded-2xl border border-white/10 bg-slate-950/70 p-5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold text-white">
-                    {formatModeLabel(breakdown.mode)} maps
-                  </h3>
-                  <span className="text-xs uppercase tracking-[0.3em] text-white/40">
-                    {formatModeShort(breakdown.mode)}
-                  </span>
-                </div>
-                <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full text-left text-sm text-white/70">
-                    <thead className="text-xs uppercase tracking-[0.2em] text-white/40">
-                      <tr>
-                        <th className="pb-2">Map</th>
-                        <th className="pb-2">KD</th>
-                        <th className="pb-2">W/L</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {breakdown.maps.map((map) => (
-                        <tr
-                          key={`${breakdown.mode}-${map.name}`}
-                          className="border-t border-white/5"
-                        >
-                          <td className="py-2 pr-4 text-white">{map.name}</td>
-                          <td className="py-2">
-                            {isSeason2
-                              ? formatKd(map.kills, map.deaths)
-                              : "—"}
-                          </td>
-                          <td className="py-2">
-                            {isSeason2 ? formatRecord(map.wins, map.losses) : "0-0"}
-                          </td>
+          {isLifetime && lifetimeTab === "All" ? null : (
+            <div className="grid gap-6">
+              {activeBreakdowns.map((breakdown) => (
+                <div
+                  key={breakdown.mode}
+                  className="rounded-2xl border border-white/10 bg-slate-950/70 p-5"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-base font-semibold text-white">
+                      {formatModeLabel(
+                        breakdown.mode,
+                        isLifetime ? (lifetimeTab === "BO7" ? 2 : 0) : seasonNumber
+                      )}{" "}
+                      maps
+                    </h3>
+                    <span className="text-xs uppercase tracking-[0.3em] text-white/40">
+                      {formatModeShort(breakdown.mode)}
+                    </span>
+                  </div>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full text-left text-sm text-white/70">
+                      <thead className="text-xs uppercase tracking-[0.2em] text-white/40">
+                        <tr>
+                          <th className="pb-2">Map</th>
+                          <th className="pb-2">KD</th>
+                          <th className="pb-2">W/L</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {breakdown.maps.map((map) => (
+                          <tr
+                            key={`${breakdown.mode}-${map.name}`}
+                            className="border-t border-white/5"
+                          >
+                            <td className="py-2 pr-4 text-white">{map.name}</td>
+                            <td className="py-2">
+                              {formatKd(map.kills, map.deaths)}
+                            </td>
+                            <td className="py-2">
+                              {formatRecord(map.wins, map.losses)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -479,11 +483,15 @@ export default function PlayerProfileClient({
               </div>
             </div>
             <div className="mt-4 space-y-4">
-              {isSeason2 ? (
-                matchHistory.length === 0 ? (
-                  <p className="text-sm text-white/60">No matches logged yet.</p>
-                ) : (
-                  matchHistory.map((match) => (
+              {matchHistory.length === 0 ? (
+                <p className="text-sm text-white/60">No matches logged yet.</p>
+              ) : (
+                matchHistory.map((match) => {
+                  const esubLabel =
+                    match.series_tags?.esub_maps && match.series_tags.esub_maps > 0
+                      ? `ESub (${match.series_tags.esub_maps} map${match.series_tags.esub_maps > 1 ? "s" : ""})`
+                      : null;
+                  return (
                     <details
                       key={match.match_id}
                       className="rounded-2xl border border-white/10 bg-black/20 p-4"
@@ -495,9 +503,27 @@ export default function PlayerProfileClient({
                               {match.home_team ?? "TBD"} vs {match.away_team ?? "TBD"}
                             </p>
                             <p className="text-xs text-white/60">
-                              {formatMatchDate(match.match_date)} · Opponent:{" "}
-                              {match.opponent ?? "TBD"}
+                              {formatMatchDate(match.match_date)} · Opponent: {match.opponent ?? "TBD"}
                             </p>
+                            {esubLabel || match.series_tags?.released || (isAdmin && match.series_tags?.esub_ineligible) ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.3em] text-white/50">
+                                {esubLabel ? (
+                                  <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                                    {esubLabel}
+                                  </span>
+                                ) : null}
+                                {match.series_tags?.released ? (
+                                  <span className="rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-rose-200">
+                                    Released
+                                  </span>
+                                ) : null}
+                                {isAdmin && match.series_tags?.esub_ineligible ? (
+                                  <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-amber-200">
+                                    ESub League Mismatch
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
                           <div className="text-xs text-white/60">
                             Series score: {match.home_wins ?? 0}-{match.away_wins ?? 0} · Result:{" "}
@@ -523,7 +549,8 @@ export default function PlayerProfileClient({
                               >
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <span className="text-white">
-                                    Map {map.map_num}: {map.map} ({formatModeLabel(map.mode)})
+                                    Map {map.map_num}: {map.map} (
+                                    {formatModeLabel(map.mode, match.season)})
                                   </span>
                                   <span className="text-xs text-white/50">
                                     Winner: {map.winner_team}
@@ -536,6 +563,11 @@ export default function PlayerProfileClient({
                                         {map.player_stats.k} K · {map.player_stats.d} D · KD{" "}
                                         {formatKd(map.player_stats.k, map.player_stats.d)}
                                       </span>
+                                      {map.player_stats.is_esub ? (
+                                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.3em] text-emerald-200">
+                                          ESub
+                                        </span>
+                                      ) : null}
                                       {map.mode === "Hardpoint" ? (
                                         <span>HP Time: {map.player_stats.hp_time ?? 0}</span>
                                       ) : null}
@@ -559,16 +591,17 @@ export default function PlayerProfileClient({
                         )}
                       </div>
                     </details>
-                  ))
-                )
-              ) : (
-                <p className="text-sm text-white/60">
-                  Match history will appear once lifetime aggregation is available.
-                </p>
+                  );
+                })
               )}
             </div>
           </div>
         </>
+      ) : (
+        <EmptyState
+          title="No history found for this season yet."
+          message="Check back once historical stats are available for this season."
+        />
       )}
     </section>
   );

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSheetId, getSheetsClient } from "@/lib/sheets";
 import type {
   MapLogIngest,
@@ -8,11 +8,14 @@ import type {
 } from "@/lib/types";
 import { hasDatabaseUrl } from "@/lib/db";
 import {
+  createIngestRun,
+  finalizeIngestRun,
   upsertMaps,
   upsertPlayerLogEntries,
   upsertPlayers,
   upsertSeries
 } from "@/lib/queries";
+import { isSeasonValue, type SeasonNumber } from "@/lib/seasons";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,8 +25,41 @@ const SERIES_RANGE_FALLBACK = "Match Log!A2:I";
 const MAPS_RANGE_FALLBACK = "Map Log!A2:F";
 const PLAYER_LOG_RANGE_FALLBACK = "Player Log!A2:P";
 
+const SERIES_GRID_RANGE = "A2:I";
+const MAPS_GRID_RANGE = "A2:F";
+const PLAYER_LOG_GRID_RANGE = "A2:P";
+
+const SEASON_SHEETS: Record<
+  SeasonNumber,
+  { series: string; maps: string; playerLog: string }
+> = {
+  0: {
+    series: "match_log_s0",
+    maps: "map_log_s0",
+    playerLog: "player_log_s0"
+  },
+  1: {
+    series: "match_log_s1",
+    maps: "map_log_s1",
+    playerLog: "player_log_s1"
+  },
+  2: {
+    series: "Match Log",
+    maps: "Map Log",
+    playerLog: "Player Log"
+  }
+};
+
 const getRange = (envKey: string, fallback: string) =>
   process.env[envKey] ?? fallback;
+
+const getGridRange = (range: string, fallbackGrid: string) => {
+  const [, gridRange] = range.split("!");
+  return gridRange ?? fallbackGrid;
+};
+
+const buildSeasonRange = (sheetName: string, gridRange: string) =>
+  `${sheetName}!${gridRange}`;
 
 const normalizeHeader = (value: string) =>
   value.toLowerCase().replace(/\s+/g, " ").trim();
@@ -68,6 +104,24 @@ const getHeaderRange = (range: string) => {
   const startCol = match[1];
   const endCol = match[4] ?? startCol;
   return `${sheetName}!${startCol}1:${endCol}1`;
+};
+
+const parseSeasonsParam = (value: string | null): SeasonNumber[] | null => {
+  if (!value) {
+    return [2];
+  }
+  const parts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return [2];
+  }
+  const seasons = parts.map((part) => Number(part));
+  if (seasons.some((season) => !Number.isInteger(season) || !isSeasonValue(season))) {
+    return null;
+  }
+  return Array.from(new Set(seasons)) as SeasonNumber[];
 };
 
 const toNullableNumber = (value: unknown) => {
@@ -207,7 +261,7 @@ const mapPlayerRow = (row: string[]): Player | null => {
   };
 };
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   if (!hasDatabaseUrl()) {
     return NextResponse.json(
       { error: "DATABASE_URL is not set" },
@@ -215,7 +269,23 @@ export async function POST() {
     );
   }
 
+  const url = new URL(request.url);
+  const seasons = parseSeasonsParam(url.searchParams.get("seasons"));
+  if (!seasons) {
+    return NextResponse.json(
+      { error: "Invalid seasons parameter. Use comma-separated values: 0,1,2." },
+      { status: 400 }
+    );
+  }
+
+  let ingestRunId = 0;
+  const summary: Record<string, unknown> = {
+    seasons: {},
+    player_ovr: { inserted: 0, updated: 0 }
+  };
+
   try {
+    ingestRunId = await createIngestRun(seasons);
     const sheets = getSheetsClient();
     const sheetId = getSheetId();
     const playerRange = getRange("SHEET_RANGE_PLAYERS", PLAYERS_RANGE_FALLBACK);
@@ -226,226 +296,272 @@ export async function POST() {
       PLAYER_LOG_RANGE_FALLBACK
     );
 
+    const seriesGrid = getGridRange(seriesRange, SERIES_GRID_RANGE);
+    const mapsGrid = getGridRange(mapsRange, MAPS_GRID_RANGE);
+    const playerLogGrid = getGridRange(playerLogRange, PLAYER_LOG_GRID_RANGE);
+
     const playerHeaderRange = getHeaderRange(playerRange);
-    const seriesHeaderRange = getHeaderRange(seriesRange);
-    const mapsHeaderRange = getHeaderRange(mapsRange);
-    const playerLogHeaderRange = getHeaderRange(playerLogRange);
-
-    const headerRanges = [
-      playerHeaderRange,
-      seriesHeaderRange,
-      mapsHeaderRange,
-      playerLogHeaderRange
-    ].filter((range): range is string => Boolean(range));
-
-    const response = await sheets.spreadsheets.values.batchGet({
+    const playerResponse = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: sheetId,
-      ranges: [playerRange, seriesRange, mapsRange, playerLogRange, ...headerRanges]
+      ranges: [playerRange, ...(playerHeaderRange ? [playerHeaderRange] : [])]
     });
 
-    const valueRanges = response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
-    const [playerValues, seriesValues, mapValues, playerLogValues] = valueRanges;
-    let headerOffset = 4;
-    const playerHeaderValues = playerHeaderRange
-      ? valueRanges[headerOffset++] ?? []
-      : [];
-    const seriesHeaderValues = seriesHeaderRange
-      ? valueRanges[headerOffset++] ?? []
-      : [];
-    const mapsHeaderValues = mapsHeaderRange
-      ? valueRanges[headerOffset++] ?? []
-      : [];
-    const playerLogHeaderValues = playerLogHeaderRange
-      ? valueRanges[headerOffset++] ?? []
-      : [];
-
-    const mapHeaderIndex = buildHeaderIndex(mapsHeaderValues[0] ?? []);
-    const playerLogHeaderIndex = buildHeaderIndex(playerLogHeaderValues[0] ?? []);
-
+    const playerRanges =
+      playerResponse.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+    const [playerValues] = playerRanges;
     const players = (playerValues ?? [])
       .map((row) => mapPlayerRow(row as string[]))
       .filter((player): player is Player => Boolean(player?.discord_id));
 
-    const seriesStartRow = getStartRow(seriesRange);
-    const mapsStartRow = getStartRow(mapsRange);
-    const playerLogStartRow = getStartRow(playerLogRange);
-    const seriesSheet = getSheetName(seriesRange);
-    const mapsSheet = getSheetName(mapsRange);
-    const playerLogSheet = getSheetName(playerLogRange);
-
-    const series = withSourceRows(seriesValues ?? [], seriesStartRow)
-      .map(({ row, source_row }) => {
-        const match_id = row[0] ?? "";
-        const match_date = normalizeMatchDate(row[2] ?? "");
-        if (!match_id) {
-          return null;
-        }
-        return {
-          match_id,
-          match_date,
-          home_team: row[4] ?? null,
-          away_team: row[5] ?? null,
-          home_wins: toNullableInteger(row[6]),
-          away_wins: toNullableInteger(row[7]),
-          series_winner: row[8] ?? null,
-          source_sheet: seriesSheet,
-          source_row
-        } satisfies MatchLogIngest;
-      })
-      .filter((match): match is NonNullable<typeof match> => Boolean(match));
-
-    const maps = withSourceRows(mapValues ?? [], mapsStartRow)
-      .map(({ row, source_row }) => {
-        const match_id =
-          row[
-            getHeaderIndex(mapHeaderIndex, ["match id", "match_id"], 0)
-          ] ?? "";
-        const map_num = toRequiredInteger(
-          row[
-            getHeaderIndex(mapHeaderIndex, ["map #", "map number", "map_num"], 1)
-          ]
-        );
-        const mode = normalizeMode(
-          row[getHeaderIndex(mapHeaderIndex, ["mode", "game mode"], 2)]
-        );
-        if (!match_id || !map_num || !mode) {
-          return null;
-        }
-        return {
-          match_id,
-          map_num,
-          mode,
-          map:
-            row[
-              getHeaderIndex(mapHeaderIndex, ["map", "map name"], 3)
-            ] ?? "",
-          winner_team:
-            row[
-              getHeaderIndex(
-                mapHeaderIndex,
-                ["winner team", "winning team", "winner"],
-                4
-              )
-            ] ?? "",
-          losing_team:
-            row[
-              getHeaderIndex(
-                mapHeaderIndex,
-                ["losing team", "loser"],
-                5
-              )
-            ] ?? "",
-          source_sheet: mapsSheet,
-          source_row
-        } satisfies MapLogIngest;
-      })
-      .filter((map): map is NonNullable<typeof map> => Boolean(map));
-
-    const playerStats = withSourceRows(playerLogValues ?? [], playerLogStartRow)
-      .map(({ row, source_row }) => {
-        const match_id =
-          row[
-            getHeaderIndex(playerLogHeaderIndex, ["match id", "match_id"], 0)
-          ] ?? "";
-        const match_date = normalizeMatchDate(
-          row[getHeaderIndex(playerLogHeaderIndex, ["match date", "date"], 2)] ??
-            ""
-        );
-        const mode = normalizeMode(
-          row[getHeaderIndex(playerLogHeaderIndex, ["mode", "game mode"], 7)]
-        );
-        const discord_id =
-          row[
-            getHeaderIndex(
-              playerLogHeaderIndex,
-              ["discord id", "discord_id", "discord"],
-              6
-            )
-          ] ?? "";
-        if (!match_id || !discord_id || !mode) {
-          return null;
-        }
-
-        const hp_time =
-          mode === "Hardpoint"
-            ? toNullableInteger(
-                row[
-                  getHeaderIndex(
-                    playerLogHeaderIndex,
-                    ["hp time", "hardpoint time", "hill time"],
-                    11
-                  )
-                ]
-              )
-            : null;
-        const plants =
-          mode === "SnD"
-            ? toNullableInteger(
-                row[getHeaderIndex(playerLogHeaderIndex, ["plants"], 12)]
-              )
-            : null;
-        const defuses =
-          mode === "SnD"
-            ? toNullableInteger(
-                row[getHeaderIndex(playerLogHeaderIndex, ["defuses"], 13)]
-              )
-            : null;
-        const ticks =
-          mode === "Control"
-            ? toNullableInteger(
-                row[getHeaderIndex(playerLogHeaderIndex, ["ticks"], 14)]
-              )
-            : null;
-
-        return {
-          match_id,
-          match_date,
-          team:
-            row[
-              getHeaderIndex(playerLogHeaderIndex, ["team", "team name"], 4)
-            ] ?? null,
-          player:
-            row[
-              getHeaderIndex(playerLogHeaderIndex, ["player", "player name"], 5)
-            ] ?? null,
-          discord_id,
-          mode,
-          k: toNullableInteger(
-            row[getHeaderIndex(playerLogHeaderIndex, ["k", "kills"], 8)]
-          ),
-          d: toNullableInteger(
-            row[getHeaderIndex(playerLogHeaderIndex, ["d", "deaths"], 9)]
-          ),
-          kd: toNullableNumber(
-            row[getHeaderIndex(playerLogHeaderIndex, ["kd", "k/d"], 10)]
-          ),
-          hp_time,
-          plants,
-          defuses,
-          ticks,
-          write_in:
-            row[getHeaderIndex(playerLogHeaderIndex, ["write in", "write_in"], 15)] ??
-            null,
-          source_sheet: playerLogSheet,
-          source_row
-        } satisfies PlayerLogEntryIngest;
-      })
-      .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat));
-
     const upsertedPlayers = await upsertPlayers(players);
-    const upsertedSeries = await upsertSeries(series);
-    const upsertedMaps = await upsertMaps(maps);
-    const upsertedPlayerStats = await upsertPlayerLogEntries(playerStats);
+    summary.player_ovr = upsertedPlayers;
+
+    for (const season of seasons) {
+      const seasonSheets = SEASON_SHEETS[season];
+      const seasonSeriesRange = buildSeasonRange(seasonSheets.series, seriesGrid);
+      const seasonMapsRange = buildSeasonRange(seasonSheets.maps, mapsGrid);
+      const seasonPlayerLogRange = buildSeasonRange(
+        seasonSheets.playerLog,
+        playerLogGrid
+      );
+
+      const seasonSeriesHeaderRange = getHeaderRange(seasonSeriesRange);
+      const seasonMapsHeaderRange = getHeaderRange(seasonMapsRange);
+      const seasonPlayerLogHeaderRange = getHeaderRange(seasonPlayerLogRange);
+
+      const seasonHeaderRanges = [
+        seasonSeriesHeaderRange,
+        seasonMapsHeaderRange,
+        seasonPlayerLogHeaderRange
+      ].filter((range): range is string => Boolean(range));
+
+      const response = await sheets.spreadsheets.values.batchGet({
+        spreadsheetId: sheetId,
+        ranges: [
+          seasonSeriesRange,
+          seasonMapsRange,
+          seasonPlayerLogRange,
+          ...seasonHeaderRanges
+        ]
+      });
+
+      const valueRanges =
+        response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
+      const [seriesValues, mapValues, playerLogValues] = valueRanges;
+      let headerOffset = 3;
+      const seriesHeaderValues = seasonSeriesHeaderRange
+        ? valueRanges[headerOffset++] ?? []
+        : [];
+      const mapsHeaderValues = seasonMapsHeaderRange
+        ? valueRanges[headerOffset++] ?? []
+        : [];
+      const playerLogHeaderValues = seasonPlayerLogHeaderRange
+        ? valueRanges[headerOffset++] ?? []
+        : [];
+
+      const mapHeaderIndex = buildHeaderIndex(mapsHeaderValues[0] ?? []);
+      const playerLogHeaderIndex = buildHeaderIndex(playerLogHeaderValues[0] ?? []);
+
+      const seriesStartRow = getStartRow(seasonSeriesRange);
+      const mapsStartRow = getStartRow(seasonMapsRange);
+      const playerLogStartRow = getStartRow(seasonPlayerLogRange);
+      const seriesSheet = getSheetName(seasonSeriesRange);
+      const mapsSheet = getSheetName(seasonMapsRange);
+      const playerLogSheet = getSheetName(seasonPlayerLogRange);
+
+      const series = withSourceRows(seriesValues ?? [], seriesStartRow)
+        .map(({ row, source_row }) => {
+          const match_id = row[0] ?? "";
+          const match_date = normalizeMatchDate(row[2] ?? "");
+          if (!match_id) {
+            return null;
+          }
+          return {
+            match_id,
+            match_date,
+            home_team: row[4] ?? null,
+            away_team: row[5] ?? null,
+            home_wins: toNullableInteger(row[6]),
+            away_wins: toNullableInteger(row[7]),
+            series_winner: row[8] ?? null,
+            season,
+            source_sheet: seriesSheet,
+            source_row
+          } satisfies MatchLogIngest;
+        })
+        .filter((match): match is NonNullable<typeof match> => Boolean(match));
+
+      const maps = withSourceRows(mapValues ?? [], mapsStartRow)
+        .map(({ row, source_row }) => {
+          const match_id =
+            row[
+              getHeaderIndex(mapHeaderIndex, ["match id", "match_id"], 0)
+            ] ?? "";
+          const map_num = toRequiredInteger(
+            row[
+              getHeaderIndex(mapHeaderIndex, ["map #", "map number", "map_num"], 1)
+            ]
+          );
+          const mode = normalizeMode(
+            row[getHeaderIndex(mapHeaderIndex, ["mode", "game mode"], 2)]
+          );
+          if (!match_id || !map_num || !mode) {
+            return null;
+          }
+          return {
+            match_id,
+            map_num,
+            mode,
+            map:
+              row[
+                getHeaderIndex(mapHeaderIndex, ["map", "map name"], 3)
+              ] ?? "",
+            winner_team:
+              row[
+                getHeaderIndex(
+                  mapHeaderIndex,
+                  ["winner team", "winning team", "winner"],
+                  4
+                )
+              ] ?? "",
+            losing_team:
+              row[
+                getHeaderIndex(
+                  mapHeaderIndex,
+                  ["losing team", "loser"],
+                  5
+                )
+              ] ?? "",
+            season,
+            source_sheet: mapsSheet,
+            source_row
+          } satisfies MapLogIngest;
+        })
+        .filter((map): map is NonNullable<typeof map> => Boolean(map));
+
+      const playerStats = withSourceRows(playerLogValues ?? [], playerLogStartRow)
+        .map(({ row, source_row }) => {
+          const match_id =
+            row[
+              getHeaderIndex(playerLogHeaderIndex, ["match id", "match_id"], 0)
+            ] ?? "";
+          const match_date = normalizeMatchDate(
+            row[getHeaderIndex(playerLogHeaderIndex, ["match date", "date"], 2)] ??
+              ""
+          );
+          const mode = normalizeMode(
+            row[getHeaderIndex(playerLogHeaderIndex, ["mode", "game mode"], 7)]
+          );
+          const discord_id =
+            row[
+              getHeaderIndex(
+                playerLogHeaderIndex,
+                ["discord id", "discord_id", "discord"],
+                6
+              )
+            ] ?? "";
+          if (!match_id || !discord_id || !mode) {
+            return null;
+          }
+
+          const hp_time =
+            mode === "Hardpoint"
+              ? toNullableInteger(
+                  row[
+                    getHeaderIndex(
+                      playerLogHeaderIndex,
+                      ["hp time", "hardpoint time", "hill time"],
+                      11
+                    )
+                  ]
+                )
+              : null;
+          const plants =
+            mode === "SnD"
+              ? toNullableInteger(
+                  row[getHeaderIndex(playerLogHeaderIndex, ["plants"], 12)]
+                )
+              : null;
+          const defuses =
+            mode === "SnD"
+              ? toNullableInteger(
+                  row[getHeaderIndex(playerLogHeaderIndex, ["defuses"], 13)]
+                )
+              : null;
+          const ticks =
+            mode === "Control"
+              ? toNullableInteger(
+                  row[getHeaderIndex(playerLogHeaderIndex, ["ticks"], 14)]
+                )
+              : null;
+
+          return {
+            match_id,
+            match_date,
+            team:
+              row[
+                getHeaderIndex(playerLogHeaderIndex, ["team", "team name"], 4)
+              ] ?? null,
+            player:
+              row[
+                getHeaderIndex(playerLogHeaderIndex, ["player", "player name"], 5)
+              ] ?? null,
+            discord_id,
+            mode,
+            k: toNullableInteger(
+              row[getHeaderIndex(playerLogHeaderIndex, ["k", "kills"], 8)]
+            ),
+            d: toNullableInteger(
+              row[getHeaderIndex(playerLogHeaderIndex, ["d", "deaths"], 9)]
+            ),
+            kd: toNullableNumber(
+              row[getHeaderIndex(playerLogHeaderIndex, ["kd", "k/d"], 10)]
+            ),
+            hp_time,
+            plants,
+            defuses,
+            ticks,
+            write_in:
+              row[
+                getHeaderIndex(playerLogHeaderIndex, ["write in", "write_in"], 15)
+              ] ?? null,
+            season,
+            source_sheet: playerLogSheet,
+            source_row
+          } satisfies PlayerLogEntryIngest;
+        })
+        .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat));
+
+      const upsertedSeries = await upsertSeries(series);
+      const upsertedMaps = await upsertMaps(maps);
+      const upsertedPlayerStats = await upsertPlayerLogEntries(playerStats);
+
+      (summary.seasons as Record<string, unknown>)[season] = {
+        match_log: upsertedSeries,
+        map_log: upsertedMaps,
+        player_log: upsertedPlayerStats
+      };
+    }
+
+    await finalizeIngestRun({
+      id: ingestRunId,
+      summary,
+      success: true
+    });
 
     return NextResponse.json({
-      player_log: upsertedPlayerStats,
-      map_log: upsertedMaps,
-      match_log: upsertedSeries,
-      player_ovr: upsertedPlayers
+      processed_seasons: seasons,
+      ...summary
     });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown ingestion error";
+    await finalizeIngestRun({
+      id: ingestRunId,
+      summary: { error: message },
+      success: false,
+      error: message
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

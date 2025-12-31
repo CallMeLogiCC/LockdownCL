@@ -95,11 +95,13 @@ export default async function MatchPage({ params }: { params: { matchId: string 
   }
 
   const [maps, playerRows] = await Promise.all([
-    getMapsBySeries(params.matchId),
-    getMatchPlayerRows(params.matchId)
+    getMapsBySeries(params.matchId, match.season),
+    getMatchPlayerRows(params.matchId, match.season)
   ]);
 
   const winner = getMatchWinner(match) ?? "TBD";
+  const formatModeLabel = (mode: string) =>
+    match.season === 2 && mode === "Control" ? "Overload" : mode;
 
   return (
     <section className="flex flex-col gap-6">
@@ -162,7 +164,7 @@ export default async function MatchPage({ params }: { params: { matchId: string 
                   <summary className="cursor-pointer list-none text-sm text-white">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <span>
-                        Map {map.map_num}: {map.map} ({map.mode})
+                        Map {map.map_num}: {map.map} ({formatModeLabel(map.mode)})
                       </span>
                       <span className="text-xs text-white/50">Winner: {map.winner_team}</span>
                     </div>

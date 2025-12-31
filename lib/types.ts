@@ -1,3 +1,5 @@
+export type SeasonNumber = 0 | 1 | 2;
+
 export type Player = {
   discord_name: string | null;
   discord_id: string;
@@ -25,6 +27,7 @@ export type MatchLog = {
   home_wins: number | null;
   away_wins: number | null;
   series_winner: string | null;
+  season: SeasonNumber;
 };
 
 export type LogSource = {
@@ -39,6 +42,7 @@ export type MapLog = {
   map: string;
   winner_team: string;
   losing_team: string;
+  season: SeasonNumber;
 };
 
 export type MatchLogIngest = MatchLog & LogSource;
@@ -59,6 +63,7 @@ export type PlayerLogEntry = {
   defuses: number | null;
   ticks: number | null;
   write_in: string | null;
+  season: SeasonNumber;
 };
 
 export type PlayerLogEntryIngest = PlayerLogEntry & LogSource;
@@ -122,6 +127,7 @@ export type PlayerMatchSummary = {
   away_team: string | null;
   home_wins: number | null;
   away_wins: number | null;
+  season: SeasonNumber;
 };
 
 export type PlayerMatchModeStat = {
@@ -149,6 +155,7 @@ export type MatchPlayerRow = {
   plants: number | null;
   defuses: number | null;
   ticks: number | null;
+  season: SeasonNumber;
 };
 
 export type PlayerAggregates = {
@@ -196,8 +203,16 @@ export type PlayerMatchMapDetail = {
     plants: number | null;
     defuses: number | null;
     ticks: number | null;
+    write_in: string | null;
+    is_esub: boolean;
   } | null;
 };
+
+export type PlayerMatchSeriesTags = {
+  esub_maps: number;
+  released: boolean;
+  esub_ineligible: boolean;
+} | null;
 
 export type PlayerMatchHistoryEntry = {
   match_id: string;
@@ -214,6 +229,8 @@ export type PlayerMatchHistoryEntry = {
     d: number;
   };
   maps: PlayerMatchMapDetail[];
+  season: SeasonNumber;
+  series_tags: PlayerMatchSeriesTags;
 };
 
 export type UserProfile = {

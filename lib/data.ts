@@ -66,7 +66,8 @@ export const series: MatchLog[] = [
     away_team: "Nova Core",
     home_wins: 3,
     away_wins: 2,
-    series_winner: "Rift Hawks"
+    series_winner: "Rift Hawks",
+    season: 2
   },
   {
     match_id: "match-002",
@@ -75,7 +76,8 @@ export const series: MatchLog[] = [
     away_team: "Rift Hawks",
     home_wins: 1,
     away_wins: 3,
-    series_winner: "Rift Hawks"
+    series_winner: "Rift Hawks",
+    season: 2
   }
 ];
 
@@ -86,7 +88,8 @@ export const maps: MapLog[] = [
     map: "Embassy",
     mode: "Hardpoint",
     winner_team: "Rift Hawks",
-    losing_team: "Nova Core"
+    losing_team: "Nova Core",
+    season: 2
   },
   {
     match_id: "match-001",
@@ -94,7 +97,8 @@ export const maps: MapLog[] = [
     map: "Mercado",
     mode: "SnD",
     winner_team: "Nova Core",
-    losing_team: "Rift Hawks"
+    losing_team: "Rift Hawks",
+    season: 2
   },
   {
     match_id: "match-001",
@@ -102,7 +106,8 @@ export const maps: MapLog[] = [
     map: "Expo",
     mode: "Control",
     winner_team: "Rift Hawks",
-    losing_team: "Nova Core"
+    losing_team: "Nova Core",
+    season: 2
   },
   {
     match_id: "match-002",
@@ -110,7 +115,8 @@ export const maps: MapLog[] = [
     map: "Hotel",
     mode: "Hardpoint",
     winner_team: "Rift Hawks",
-    losing_team: "Pulse Unit"
+    losing_team: "Pulse Unit",
+    season: 2
   }
 ];
 
@@ -129,7 +135,8 @@ export const playerLog: PlayerLogEntry[] = [
     plants: null,
     defuses: null,
     ticks: null,
-    write_in: null
+    write_in: null,
+    season: 2
   },
   {
     match_id: "match-001",
@@ -145,7 +152,8 @@ export const playerLog: PlayerLogEntry[] = [
     plants: null,
     defuses: null,
     ticks: null,
-    write_in: null
+    write_in: null,
+    season: 2
   },
   {
     match_id: "match-001",
@@ -161,7 +169,8 @@ export const playerLog: PlayerLogEntry[] = [
     plants: 1,
     defuses: 0,
     ticks: null,
-    write_in: null
+    write_in: null,
+    season: 2
   },
   {
     match_id: "match-001",
@@ -177,7 +186,8 @@ export const playerLog: PlayerLogEntry[] = [
     plants: 2,
     defuses: 1,
     ticks: null,
-    write_in: null
+    write_in: null,
+    season: 2
   },
   {
     match_id: "match-001",
@@ -193,7 +203,8 @@ export const playerLog: PlayerLogEntry[] = [
     plants: null,
     defuses: null,
     ticks: 30,
-    write_in: null
+    write_in: null,
+    season: 2
   },
   {
     match_id: "match-001",
@@ -209,7 +220,8 @@ export const playerLog: PlayerLogEntry[] = [
     plants: null,
     defuses: null,
     ticks: null,
-    write_in: null
+    write_in: null,
+    season: 2
   }
 ];
 

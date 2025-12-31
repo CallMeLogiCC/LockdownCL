@@ -13,6 +13,7 @@ import {
 } from "@/lib/seo";
 import { getTeamDefinitionBySlug } from "@/lib/teams";
 import TeamLogo from "@/app/components/TeamLogo";
+import { DEFAULT_SEASON } from "@/lib/seasons";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export async function generateMetadata({
     };
   }
 
-  const matches = await getMatchesByTeam(team);
+  const matches = await getMatchesByTeam(team, DEFAULT_SEASON);
   const record = computeTeamRecord(team, matches);
   const recordLabel = `${record.seriesWins}-${record.seriesLosses}`;
   const leagueLabel = getTeamLeagueLabel(team);
@@ -155,9 +156,9 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
   }
 
   const [roster, matches, modeRates] = await Promise.all([
-    getTeamRoster(team, teamDef.league),
-    getMatchesByTeam(team),
-    getTeamModeWinRates(team)
+    getTeamRoster(team, teamDef.league, DEFAULT_SEASON),
+    getMatchesByTeam(team, DEFAULT_SEASON),
+    getTeamModeWinRates(team, DEFAULT_SEASON)
   ]);
 
   const record = computeTeamRecord(team, matches);

@@ -22,8 +22,8 @@ export async function GET(
     return NextResponse.json({ error: "Series not found" }, { status: 404 });
   }
 
-  const maps = await getMapsBySeries(params.match_id);
-  const stats = await getMatchPlayerRows(params.match_id);
+  const maps = await getMapsBySeries(params.match_id, match.season);
+  const stats = await getMatchPlayerRows(params.match_id, match.season);
 
   return NextResponse.json({ series: match, maps, stats });
 }
