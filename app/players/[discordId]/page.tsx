@@ -2,10 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { hasDatabaseUrl } from "@/lib/db";
 import {
-  getPlayerAggregates,
-  getPlayerMapBreakdowns,
-  getPlayerMatchHistory,
   getPlayerProfile,
+  getPlayerSeasonDashboard,
   getPlayerTotals,
   getUserProfile
 } from "@/lib/queries";
@@ -100,16 +98,13 @@ export default async function PlayerPage({
     );
   }
 
-  const [profile, aggregates, mapBreakdowns, matchHistory, totals, userProfile, session] =
-    await Promise.all([
-      getPlayerProfile(params.discordId),
-      getPlayerAggregates(params.discordId),
-      getPlayerMapBreakdowns(params.discordId),
-      getPlayerMatchHistory(params.discordId),
-      getPlayerTotals(params.discordId),
-      getUserProfile(params.discordId),
-      getAuthSession()
-    ]);
+  const [profile, seasonDashboard, totals, userProfile, session] = await Promise.all([
+    getPlayerProfile(params.discordId),
+    getPlayerSeasonDashboard(params.discordId),
+    getPlayerTotals(params.discordId),
+    getUserProfile(params.discordId),
+    getAuthSession()
+  ]);
 
   if (!profile) {
     notFound();
@@ -143,12 +138,11 @@ export default async function PlayerPage({
       />
       <PlayerProfileClient
         profile={profile}
-        aggregates={aggregates}
-        mapBreakdowns={mapBreakdowns}
-        matchHistory={matchHistory}
+        seasonDashboard={seasonDashboard}
         userProfile={userProfile}
         showPrivateWarning={isViewer && isUnregistered}
         showEditShortcut={isViewer}
+        isAdmin={session?.user?.isAdmin ?? false}
       />
       <div className="sr-only">Overall KD: {ovrLabel}</div>
     </>

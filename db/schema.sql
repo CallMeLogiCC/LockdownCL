@@ -17,9 +17,11 @@ create table if not exists player_log (
   defuses integer,
   ticks integer,
   write_in text,
+  season integer not null default 2,
   source_sheet text not null,
   source_row integer not null,
-  unique (source_sheet, source_row)
+  unique (source_sheet, source_row),
+  constraint player_log_season_valid check (season in (0, 1, 2))
 );
 
 create index if not exists player_log_match_id_idx on player_log (match_id);
@@ -27,6 +29,8 @@ create index if not exists player_log_discord_id_idx on player_log (discord_id);
 create index if not exists player_log_team_idx on player_log (team);
 create index if not exists player_log_match_date_idx on player_log (match_date);
 create index if not exists player_log_mode_idx on player_log (mode);
+create index if not exists player_log_season_match_id_idx on player_log (season, match_id);
+create index if not exists player_log_season_discord_id_idx on player_log (season, discord_id);
 
 create table if not exists map_log (
   id bigserial primary key,
@@ -36,14 +40,18 @@ create table if not exists map_log (
   map text not null,
   winner_team text not null,
   losing_team text not null,
+  season integer not null default 2,
   source_sheet text not null,
   source_row integer not null,
   unique (source_sheet, source_row),
-  unique (match_id, map_num)
+  unique (match_id, map_num),
+  constraint map_log_season_valid check (season in (0, 1, 2))
 );
 
 create index if not exists map_log_match_id_idx on map_log (match_id);
 create index if not exists map_log_mode_idx on map_log (mode);
+create index if not exists map_log_season_match_id_idx on map_log (season, match_id);
+create index if not exists map_log_season_match_map_idx on map_log (season, match_id, map_num);
 
 create table if not exists match_log (
   match_id text primary key,
@@ -53,10 +61,14 @@ create table if not exists match_log (
   home_wins integer,
   away_wins integer,
   series_winner text,
+  season integer not null default 2,
   source_sheet text not null,
   source_row integer not null,
-  unique (source_sheet, source_row)
+  unique (source_sheet, source_row),
+  constraint match_log_season_valid check (season in (0, 1, 2))
 );
+
+create index if not exists match_log_season_match_id_idx on match_log (season, match_id);
 
 create table if not exists player_ovr (
   discord_name text,
@@ -75,6 +87,16 @@ create table if not exists player_ovr (
       (rank_is_na and rank_value is null)
       or (not rank_is_na and rank_value between 0.5 and 18.0)
     )
+);
+
+create table if not exists ingest_runs (
+  id bigserial primary key,
+  started_at timestamp not null default now(),
+  finished_at timestamp,
+  seasons text not null,
+  summary jsonb,
+  success boolean not null default false,
+  error text
 );
 
 -- Auth.js / NextAuth tables

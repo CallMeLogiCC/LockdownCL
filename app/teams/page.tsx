@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { hasDatabaseUrl } from "@/lib/db";
-import { getAllMatches } from "@/lib/queries";
+import { getMatchesBySeason } from "@/lib/queries";
 import { LEAGUE_LABELS } from "@/lib/league";
 import TeamLogo from "@/app/components/TeamLogo";
 import { buildStandingsByLeague } from "@/lib/standings";
 import { buildCanonicalUrl, SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
+import { DEFAULT_SEASON } from "@/lib/seasons";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export default async function TeamsPage() {
     );
   }
 
-  const matches = await getAllMatches();
+  const matches = await getMatchesBySeason(DEFAULT_SEASON);
   const standings = buildStandingsByLeague(matches);
 
   return (

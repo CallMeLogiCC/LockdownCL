@@ -21,7 +21,12 @@ import type {
   UserProfile,
   TeamModeWinRateRow
 } from "@/lib/types";
-import type { LeagueKey } from "@/lib/league";
+import {
+  getLeagueForRank,
+  isWomensRegistered,
+  type LeagueKey
+} from "@/lib/league";
+import { DEFAULT_SEASON, getMatchLeague, type SeasonNumber } from "@/lib/seasons";
 import { TEAM_DEFS } from "@/lib/teams";
 
 export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
@@ -51,16 +56,25 @@ export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
         sum(coalesce(k, 0))::int as total_k,
         sum(coalesce(d, 0))::int as total_d
       from player_log
+      where season = $1
       group by discord_id
     ) stats on stats.discord_id = po.discord_id
     order by po.discord_name
     `
+    ,
+    [DEFAULT_SEASON]
   );
 
   return rows as PlayerWithStats[];
 }
 
-const MAP_LISTS: Record<string, string[]> = {
+const BO6_MAP_LISTS: Record<string, string[]> = {
+  Hardpoint: ["Skyline", "Vault", "Hacienda", "Protocol", "Red Card", "Rewind"],
+  SnD: ["Vault", "Hacienda", "Rewind", "Protocol", "Red Card", "Dealership"],
+  Control: ["Hacienda", "Protocol", "Vault"]
+};
+
+const BO7_MAP_LISTS: Record<string, string[]> = {
   Hardpoint: ["Blackheart", "Colossus", "Den", "Exposure", "Scar"],
   SnD: ["Raid", "Colossus", "Den", "Exposure", "Scar"],
   Control: ["Den", "Exposure", "Scar"]
@@ -84,7 +98,8 @@ const getPlayerPageBaseData = cache(async (discordId: string) => {
       plants,
       defuses,
       ticks,
-      write_in
+      write_in,
+      season
     from player_log
     where discord_id = $1
     order by match_id, mode, id
@@ -107,7 +122,7 @@ const getPlayerPageBaseData = cache(async (discordId: string) => {
   const [{ rows: matchRows }, { rows: mapRows }] = await Promise.all([
     getPool().query(
       `
-      select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner
+      select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner, season
       from match_log
       where match_id = any($1::text[])
       order by match_date desc nulls last, match_id desc
@@ -116,7 +131,7 @@ const getPlayerPageBaseData = cache(async (discordId: string) => {
     ),
     getPool().query(
       `
-      select match_id, map_num, mode, map, winner_team, losing_team
+      select match_id, map_num, mode, map, winner_team, losing_team, season
       from map_log
       where match_id = any($1::text[])
       order by match_id, map_num
@@ -169,14 +184,23 @@ const buildMapLogsByMatchMode = (mapLogs: MapLog[]) => {
   return grouped;
 };
 
-export async function getPlayerProfile(discordId: string): Promise<Player | null> {
-  return getPlayerById(discordId);
-}
+const filterRowsBySeasons = <T extends { season: SeasonNumber }>(
+  rows: T[],
+  seasons: SeasonNumber[]
+) => rows.filter((row) => seasons.includes(row.season));
 
-export async function getPlayerAggregates(discordId: string): Promise<PlayerAggregates> {
-  const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
+const computeAggregates = ({
+  playerLogs,
+  matchLogs,
+  mapLogs,
+  modeKey
+}: {
+  playerLogs: PlayerLogRow[];
+  matchLogs: MatchLog[];
+  mapLogs: MapLog[];
+  modeKey?: (mode: string, season: SeasonNumber) => string;
+}): PlayerAggregates => {
   const matchTeams = getMatchTeamMap(playerLogs);
-
   const totals = playerLogs.reduce(
     (acc, row) => {
       acc.kills += row.k ?? 0;
@@ -186,13 +210,17 @@ export async function getPlayerAggregates(discordId: string): Promise<PlayerAggr
     { kills: 0, deaths: 0 }
   );
 
+  const getModeKey = (mode: string, season: SeasonNumber) =>
+    modeKey ? modeKey(mode, season) : mode;
+
   const modes: PlayerAggregates["modes"] = {};
   playerLogs.forEach((row) => {
-    if (!modes[row.mode]) {
-      modes[row.mode] = { kills: 0, deaths: 0, map_wins: 0, map_losses: 0 };
+    const key = getModeKey(row.mode, row.season);
+    if (!modes[key]) {
+      modes[key] = { kills: 0, deaths: 0, map_wins: 0, map_losses: 0 };
     }
-    modes[row.mode].kills += row.k ?? 0;
-    modes[row.mode].deaths += row.d ?? 0;
+    modes[key].kills += row.k ?? 0;
+    modes[key].deaths += row.d ?? 0;
   });
 
   let seriesWins = 0;
@@ -221,15 +249,16 @@ export async function getPlayerAggregates(discordId: string): Promise<PlayerAggr
     if (!team) {
       return;
     }
+    const key = getModeKey(map.mode, map.season);
     if (map.winner_team === team) {
       mapWins += 1;
-      if (modes[map.mode]) {
-        modes[map.mode].map_wins += 1;
+      if (modes[key]) {
+        modes[key].map_wins += 1;
       }
     } else if (map.losing_team === team) {
       mapLosses += 1;
-      if (modes[map.mode]) {
-        modes[map.mode].map_losses += 1;
+      if (modes[key]) {
+        modes[key].map_losses += 1;
       }
     }
   });
@@ -245,20 +274,29 @@ export async function getPlayerAggregates(discordId: string): Promise<PlayerAggr
     },
     modes
   };
-}
+};
 
-export async function getPlayerMapBreakdowns(
-  discordId: string
-): Promise<PlayerMapBreakdown[]> {
-  const { playerLogs, mapLogs, matchIds } = await getPlayerPageBaseData(discordId);
+const buildMapBreakdowns = ({
+  mapLists,
+  playerLogs,
+  mapLogs,
+  matchIds,
+  modeLabel
+}: {
+  mapLists: Record<string, string[]>;
+  playerLogs: PlayerLogRow[];
+  mapLogs: MapLog[];
+  matchIds: string[];
+  modeLabel: (mode: string) => string;
+}): PlayerMapBreakdown[] => {
   const matchTeams = getMatchTeamMap(playerLogs);
   const playerLogsByMatchMode = buildPlayerLogsByMatchMode(playerLogs);
   const mapLogsByMatchMode = buildMapLogsByMatchMode(mapLogs);
 
-  const modeBreakdowns: PlayerMapBreakdown[] = Object.entries(MAP_LISTS).map(
+  const modeBreakdowns: PlayerMapBreakdown[] = Object.entries(mapLists).map(
     ([mode, maps]) => ({
       mode,
-      label: mode === "Control" ? "Overload" : mode,
+      label: modeLabel(mode),
       maps: maps.map((mapName) => ({
         name: mapName,
         kills: 0,
@@ -279,7 +317,7 @@ export async function getPlayerMapBreakdowns(
   });
 
   matchIds.forEach((matchId) => {
-    Object.keys(MAP_LISTS).forEach((mode) => {
+    Object.keys(mapLists).forEach((mode) => {
       const mapRows = mapLogsByMatchMode.get(buildModeKey(matchId, mode)) ?? [];
       const playerRows = playerLogsByMatchMode.get(buildModeKey(matchId, mode)) ?? [];
       mapRows.forEach((mapRow, index) => {
@@ -306,12 +344,21 @@ export async function getPlayerMapBreakdowns(
   });
 
   return modeBreakdowns;
-}
+};
 
-export async function getPlayerMatchHistory(
-  discordId: string
-): Promise<PlayerMatchHistoryEntry[]> {
-  const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
+const isESubEntry = (value: string | null) => value === "ESub";
+
+const buildPlayerMatchHistory = ({
+  playerLogs,
+  matchLogs,
+  mapLogs,
+  currentPlayer
+}: {
+  playerLogs: PlayerLogRow[];
+  matchLogs: MatchLog[];
+  mapLogs: MapLog[];
+  currentPlayer: Player | null;
+}): PlayerMatchHistoryEntry[] => {
   const matchTeams = getMatchTeamMap(playerLogs);
   const playerLogsByMatch = new Map<string, PlayerLogRow[]>();
   playerLogs.forEach((row) => {
@@ -329,6 +376,11 @@ export async function getPlayerMatchHistory(
     }
     mapLogsByMatch.get(row.match_id)?.push(row);
   });
+
+  const coedLeague = currentPlayer
+    ? getLeagueForRank(currentPlayer.rank_value, currentPlayer.rank_is_na)
+    : null;
+  const womensEligible = currentPlayer ? isWomensRegistered(currentPlayer) : false;
 
   return matchLogs.map((match) => {
     const team = matchTeams.get(match.match_id) ?? null;
@@ -369,6 +421,9 @@ export async function getPlayerMatchHistory(
       const playerRow = playerRows[counter];
       modeCounters[mapRow.mode] = counter + 1;
 
+      const writeIn = playerRow?.write_in ?? null;
+      const isESub = match.season >= 2 && isESubEntry(writeIn);
+
       return {
         map_num: mapRow.map_num,
         mode: mapRow.mode,
@@ -382,11 +437,37 @@ export async function getPlayerMatchHistory(
               hp_time: playerRow.hp_time,
               plants: playerRow.plants,
               defuses: playerRow.defuses,
-              ticks: playerRow.ticks
+              ticks: playerRow.ticks,
+              write_in: writeIn,
+              is_esub: isESub
             }
           : null
       };
     });
+
+    const esubMapCount = maps.filter((map) => map.player_stats?.is_esub).length;
+    const matchLeague = getMatchLeague(match.season, match.home_team, match.away_team);
+    const isEligibleForLeague = (() => {
+      if (!currentPlayer || matchLeague === "unknown") {
+        return true;
+      }
+      if (matchLeague === "Womens") {
+        return womensEligible;
+      }
+      return coedLeague === matchLeague;
+    })();
+
+    const currentTeam =
+      matchLeague === "Womens" ? currentPlayer?.womens_team ?? null : currentPlayer?.team ?? null;
+    const released =
+      match.season >= 2 &&
+      esubMapCount === 0 &&
+      team &&
+      currentTeam &&
+      team !== currentTeam;
+
+    const showTags = match.season >= 2 && (esubMapCount > 0 || released);
+    const esubIneligible = esubMapCount > 0 && !isEligibleForLeague;
 
     return {
       match_id: match.match_id,
@@ -399,9 +480,182 @@ export async function getPlayerMatchHistory(
       opponent,
       series_result: seriesWin ? "W" : "L",
       totals,
-      maps
+      maps,
+      season: match.season,
+      series_tags: showTags
+        ? {
+            esub_maps: esubMapCount,
+            released,
+            esub_ineligible: esubIneligible
+          }
+        : null
     };
   });
+};
+
+export async function getPlayerProfile(discordId: string): Promise<Player | null> {
+  return getPlayerById(discordId);
+}
+
+export async function getPlayerAggregates(discordId: string): Promise<PlayerAggregates> {
+  const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
+  return computeAggregates({ playerLogs, matchLogs, mapLogs });
+}
+
+export async function getPlayerMapBreakdowns(
+  discordId: string
+): Promise<PlayerMapBreakdown[]> {
+  const { playerLogs, mapLogs, matchIds } = await getPlayerPageBaseData(discordId);
+  return buildMapBreakdowns({
+    mapLists: BO7_MAP_LISTS,
+    playerLogs,
+    mapLogs,
+    matchIds,
+    modeLabel: (mode) => (mode === "Control" ? "Overload" : mode)
+  });
+}
+
+export async function getPlayerMatchHistory(
+  discordId: string
+): Promise<PlayerMatchHistoryEntry[]> {
+  const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
+  const currentPlayer = await getPlayerById(discordId);
+  return buildPlayerMatchHistory({
+    playerLogs,
+    matchLogs,
+    mapLogs,
+    currentPlayer
+  });
+}
+
+type PlayerSeasonDataset = {
+  aggregates: PlayerAggregates;
+  mapBreakdowns: PlayerMapBreakdown[];
+  matchHistory: PlayerMatchHistoryEntry[];
+};
+
+export type PlayerSeasonDashboard = {
+  seasons: Record<SeasonNumber, PlayerSeasonDataset>;
+  lifetime: {
+    bo6: {
+      aggregates: PlayerAggregates;
+      mapBreakdowns: PlayerMapBreakdown[];
+    };
+    bo7: {
+      aggregates: PlayerAggregates;
+      mapBreakdowns: PlayerMapBreakdown[];
+    };
+    all: {
+      aggregates: PlayerAggregates;
+    };
+  };
+  lifetimeMatchHistory: PlayerMatchHistoryEntry[];
+};
+
+export async function getPlayerSeasonDashboard(
+  discordId: string
+): Promise<PlayerSeasonDashboard> {
+  const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
+  const currentPlayer = await getPlayerById(discordId);
+
+  const buildSeasonData = (season: SeasonNumber): PlayerSeasonDataset => {
+    const seasonPlayerLogs = filterRowsBySeasons(playerLogs, [season]);
+    const seasonMatchLogs = filterRowsBySeasons(matchLogs, [season]);
+    const seasonMapLogs = filterRowsBySeasons(mapLogs, [season]);
+    const matchIds = Array.from(new Set(seasonPlayerLogs.map((row) => row.match_id)));
+    const mapLists = season === 2 ? BO7_MAP_LISTS : BO6_MAP_LISTS;
+    const labelForMode = (mode: string) =>
+      season === 2 && mode === "Control" ? "Overload" : mode;
+
+    return {
+      aggregates: computeAggregates({
+        playerLogs: seasonPlayerLogs,
+        matchLogs: seasonMatchLogs,
+        mapLogs: seasonMapLogs
+      }),
+      mapBreakdowns: buildMapBreakdowns({
+        mapLists,
+        playerLogs: seasonPlayerLogs,
+        mapLogs: seasonMapLogs,
+        matchIds,
+        modeLabel: labelForMode
+      }),
+      matchHistory: buildPlayerMatchHistory({
+        playerLogs: seasonPlayerLogs,
+        matchLogs: seasonMatchLogs,
+        mapLogs: seasonMapLogs,
+        currentPlayer
+      })
+    };
+  };
+
+  const seasons: SeasonNumber[] = [0, 1, 2];
+  const seasonData = seasons.reduce(
+    (acc, season) => {
+      acc[season] = buildSeasonData(season);
+      return acc;
+    },
+    {} as Record<SeasonNumber, PlayerSeasonDataset>
+  );
+
+  const bo6PlayerLogs = filterRowsBySeasons(playerLogs, [0, 1]);
+  const bo6MatchLogs = filterRowsBySeasons(matchLogs, [0, 1]);
+  const bo6MapLogs = filterRowsBySeasons(mapLogs, [0, 1]);
+  const bo6MatchIds = Array.from(new Set(bo6PlayerLogs.map((row) => row.match_id)));
+
+  const bo7PlayerLogs = filterRowsBySeasons(playerLogs, [2]);
+  const bo7MatchLogs = filterRowsBySeasons(matchLogs, [2]);
+  const bo7MapLogs = filterRowsBySeasons(mapLogs, [2]);
+  const bo7MatchIds = Array.from(new Set(bo7PlayerLogs.map((row) => row.match_id)));
+
+  return {
+    seasons: seasonData,
+    lifetime: {
+      bo6: {
+        aggregates: computeAggregates({
+          playerLogs: bo6PlayerLogs,
+          matchLogs: bo6MatchLogs,
+          mapLogs: bo6MapLogs
+        }),
+        mapBreakdowns: buildMapBreakdowns({
+          mapLists: BO6_MAP_LISTS,
+          playerLogs: bo6PlayerLogs,
+          mapLogs: bo6MapLogs,
+          matchIds: bo6MatchIds,
+          modeLabel: (mode) => mode
+        })
+      },
+      bo7: {
+        aggregates: computeAggregates({
+          playerLogs: bo7PlayerLogs,
+          matchLogs: bo7MatchLogs,
+          mapLogs: bo7MapLogs
+        }),
+        mapBreakdowns: buildMapBreakdowns({
+          mapLists: BO7_MAP_LISTS,
+          playerLogs: bo7PlayerLogs,
+          mapLogs: bo7MapLogs,
+          matchIds: bo7MatchIds,
+          modeLabel: (mode) => (mode === "Control" ? "Overload" : mode)
+        })
+      },
+      all: {
+        aggregates: computeAggregates({
+          playerLogs,
+          matchLogs,
+          mapLogs,
+          modeKey: (mode, season) =>
+            season === 2 && mode === "Control" ? "Overload" : mode
+        })
+      }
+    },
+    lifetimeMatchHistory: buildPlayerMatchHistory({
+      playerLogs,
+      matchLogs,
+      mapLogs,
+      currentPlayer
+    })
+  };
 }
 
 export async function getPlayerById(discordId: string): Promise<Player | null> {
@@ -602,7 +856,8 @@ export async function getPlayerMatchSummaries(
       ml.home_team,
       ml.away_team,
       ml.home_wins,
-      ml.away_wins
+      ml.away_wins,
+      ml.season
     from player_log pl
     join match_log ml on ml.match_id = pl.match_id
     where pl.discord_id = $1
@@ -666,7 +921,7 @@ export async function getPlayerMatchTeams(
 export async function getSeriesById(matchId: string): Promise<MatchLog | null> {
   const { rows } = await getPool().query(
     `
-    select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner
+    select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner, season
     from match_log
     where match_id = $1
     `,
@@ -675,41 +930,49 @@ export async function getSeriesById(matchId: string): Promise<MatchLog | null> {
   return (rows as MatchLog[])[0] ?? null;
 }
 
-export async function getMatchesByTeam(team: string): Promise<MatchLog[]> {
+export async function getMatchesByTeam(
+  team: string,
+  season: SeasonNumber = DEFAULT_SEASON
+): Promise<MatchLog[]> {
   const { rows } = await getPool().query(
     `
-    select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner
+    select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner, season
     from match_log
-    where home_team = $1 or away_team = $1
+    where (home_team = $1 or away_team = $1) and season = $2
     order by match_date desc nulls last, match_id desc
     `,
-    [team]
+    [team, season]
   );
 
   return rows as MatchLog[];
 }
 
-export async function getAllMatches(): Promise<MatchLog[]> {
+export async function getMatchesBySeason(season: SeasonNumber): Promise<MatchLog[]> {
   const { rows } = await getPool().query(
     `
-    select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner
+    select match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner, season
     from match_log
+    where season = $1
     order by match_date desc nulls last
-    `
+    `,
+    [season]
   );
 
   return rows as MatchLog[];
 }
 
-export async function getMapsBySeries(matchId: string): Promise<MapLog[]> {
+export async function getMapsBySeries(
+  matchId: string,
+  season?: SeasonNumber
+): Promise<MapLog[]> {
   const { rows } = await getPool().query(
     `
-    select match_id, map_num, mode, map, winner_team, losing_team
+    select match_id, map_num, mode, map, winner_team, losing_team, season
     from map_log
-    where match_id = $1
+    where match_id = $1${season !== undefined ? " and season = $2" : ""}
     order by map_num
     `,
-    [matchId]
+    season !== undefined ? [matchId, season] : [matchId]
   );
   return rows as MapLog[];
 }
@@ -720,7 +983,7 @@ export async function getMapsByMatchIds(matchIds: string[]): Promise<MapLog[]> {
   }
   const { rows } = await getPool().query(
     `
-    select match_id, map_num, mode, map, winner_team, losing_team
+    select match_id, map_num, mode, map, winner_team, losing_team, season
     from map_log
     where match_id = any($1::text[])
     order by match_id, map_num
@@ -730,7 +993,10 @@ export async function getMapsByMatchIds(matchIds: string[]): Promise<MapLog[]> {
   return rows as MapLog[];
 }
 
-export async function getMatchPlayerRows(matchId: string): Promise<MatchPlayerRow[]> {
+export async function getMatchPlayerRows(
+  matchId: string,
+  season?: SeasonNumber
+): Promise<MatchPlayerRow[]> {
   const { rows } = await getPool().query(
     `
     select
@@ -745,12 +1011,13 @@ export async function getMatchPlayerRows(matchId: string): Promise<MatchPlayerRo
       pl.hp_time,
       pl.plants,
       pl.defuses,
-      pl.ticks
+      pl.ticks,
+      pl.season
     from player_log pl
-    where pl.match_id = $1
+    where pl.match_id = $1${season !== undefined ? " and pl.season = $2" : ""}
     order by pl.mode, pl.team, pl.player
     `,
-    [matchId]
+    season !== undefined ? [matchId, season] : [matchId]
   );
 
   return rows as MatchPlayerRow[];
@@ -758,7 +1025,8 @@ export async function getMatchPlayerRows(matchId: string): Promise<MatchPlayerRo
 
 export async function getTeamRoster(
   team: string,
-  league: LeagueKey
+  league: LeagueKey,
+  season: SeasonNumber = DEFAULT_SEASON
 ): Promise<PlayerWithStats[]> {
   const baseQuery = `
     select
@@ -785,6 +1053,7 @@ export async function getTeamRoster(
         sum(coalesce(k, 0))::int as total_k,
         sum(coalesce(d, 0))::int as total_d
       from player_log
+      where season = $2
       group by discord_id
     ) stats on stats.discord_id = po.discord_id
   `;
@@ -810,12 +1079,15 @@ export async function getTeamRoster(
     order by po.discord_name
   `;
 
-  const { rows } = await getPool().query(query, [team]);
+  const { rows } = await getPool().query(query, [team, season]);
 
   return rows as PlayerWithStats[];
 }
 
-export async function getTeamModeWinRates(team: string): Promise<TeamModeWinRateRow[]> {
+export async function getTeamModeWinRates(
+  team: string,
+  season: SeasonNumber = DEFAULT_SEASON
+): Promise<TeamModeWinRateRow[]> {
   const { rows } = await getPool().query(
     `
     select
@@ -823,11 +1095,11 @@ export async function getTeamModeWinRates(team: string): Promise<TeamModeWinRate
       sum(case when winner_team = $1 then 1 else 0 end)::int as wins,
       sum(case when winner_team = $1 or losing_team = $1 then 1 else 0 end)::int as total
     from map_log
-    where winner_team = $1 or losing_team = $1
+    where (winner_team = $1 or losing_team = $1) and season = $2
     group by mode
     order by mode
     `,
-    [team]
+    [team, season]
   );
 
   return rows as TeamModeWinRateRow[];
@@ -900,6 +1172,42 @@ const countUpserts = (rows: Array<{ inserted: boolean }>): UpsertCounts => {
   return { inserted, updated: rows.length - inserted };
 };
 
+export async function createIngestRun(seasons: SeasonNumber[]): Promise<number> {
+  const { rows } = await getPool().query(
+    `
+    insert into ingest_runs (started_at, seasons, success)
+    values (now(), $1, false)
+    returning id
+    `,
+    [seasons.join(",")]
+  );
+  const row = rows[0] as { id?: number } | undefined;
+  return row?.id ?? 0;
+}
+
+export async function finalizeIngestRun(params: {
+  id: number;
+  summary: Record<string, unknown>;
+  success: boolean;
+  error?: string | null;
+}) {
+  const { id, summary, success, error } = params;
+  if (!id) {
+    return;
+  }
+  await getPool().query(
+    `
+    update ingest_runs
+    set finished_at = now(),
+        summary = $2,
+        success = $3,
+        error = $4
+    where id = $1
+    `,
+    [id, summary, success, error ?? null]
+  );
+}
+
 export async function upsertPlayers(players: Player[]): Promise<UpsertCounts> {
   if (players.length === 0) {
     return { inserted: 0, updated: 0 };
@@ -952,7 +1260,7 @@ export async function upsertSeries(series: MatchLogIngest[]): Promise<UpsertCoun
 
   const values: Array<string | number | null> = [];
   const rows = series.map((match, index) => {
-    const offset = index * 9;
+    const offset = index * 10;
     values.push(
       match.match_id,
       match.match_date,
@@ -961,15 +1269,16 @@ export async function upsertSeries(series: MatchLogIngest[]): Promise<UpsertCoun
       match.home_wins,
       match.away_wins,
       match.series_winner,
+      match.season,
       match.source_sheet,
       match.source_row
     );
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`;
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`;
   });
 
   const query = `
     insert into match_log
-      (match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner, source_sheet, source_row)
+      (match_id, match_date, home_team, away_team, home_wins, away_wins, series_winner, season, source_sheet, source_row)
     values ${rows.join(", ")}
     on conflict (source_sheet, source_row)
     do update set
@@ -979,7 +1288,8 @@ export async function upsertSeries(series: MatchLogIngest[]): Promise<UpsertCoun
       away_team = excluded.away_team,
       home_wins = excluded.home_wins,
       away_wins = excluded.away_wins,
-      series_winner = excluded.series_winner
+      series_winner = excluded.series_winner,
+      season = excluded.season
     returning (xmax = 0) as inserted
   `;
 
@@ -994,7 +1304,7 @@ export async function upsertMaps(maps: MapLogIngest[]): Promise<UpsertCounts> {
 
   const values: Array<string | number> = [];
   const rows = maps.map((map, index) => {
-    const offset = index * 8;
+    const offset = index * 9;
     values.push(
       map.match_id,
       map.map_num,
@@ -1002,15 +1312,16 @@ export async function upsertMaps(maps: MapLogIngest[]): Promise<UpsertCounts> {
       map.map,
       map.winner_team,
       map.losing_team,
+      map.season,
       map.source_sheet,
       map.source_row
     );
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`;
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`;
   });
 
   const query = `
     insert into map_log
-      (match_id, map_num, mode, map, winner_team, losing_team, source_sheet, source_row)
+      (match_id, map_num, mode, map, winner_team, losing_team, season, source_sheet, source_row)
     values ${rows.join(", ")}
     on conflict (source_sheet, source_row)
     do update set
@@ -1019,7 +1330,8 @@ export async function upsertMaps(maps: MapLogIngest[]): Promise<UpsertCounts> {
       mode = excluded.mode,
       map = excluded.map,
       winner_team = excluded.winner_team,
-      losing_team = excluded.losing_team
+      losing_team = excluded.losing_team,
+      season = excluded.season
     returning (xmax = 0) as inserted
   `;
 
@@ -1036,7 +1348,7 @@ export async function upsertPlayerLogEntries(
 
   const values: Array<string | number | null> = [];
   const rows = entries.map((entry, index) => {
-    const offset = index * 16;
+    const offset = index * 17;
     values.push(
       entry.match_id,
       entry.match_date,
@@ -1052,15 +1364,16 @@ export async function upsertPlayerLogEntries(
       entry.defuses,
       entry.ticks,
       entry.write_in,
+      entry.season,
       entry.source_sheet,
       entry.source_row
     );
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16})`;
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17})`;
   });
 
   const query = `
     insert into player_log
-      (match_id, match_date, team, player, discord_id, mode, k, d, kd, hp_time, plants, defuses, ticks, write_in, source_sheet, source_row)
+      (match_id, match_date, team, player, discord_id, mode, k, d, kd, hp_time, plants, defuses, ticks, write_in, season, source_sheet, source_row)
     values ${rows.join(", ")}
     on conflict (source_sheet, source_row)
     do update set
@@ -1077,7 +1390,8 @@ export async function upsertPlayerLogEntries(
       plants = excluded.plants,
       defuses = excluded.defuses,
       ticks = excluded.ticks,
-      write_in = excluded.write_in
+      write_in = excluded.write_in,
+      season = excluded.season
     returning (xmax = 0) as inserted
   `;
 
