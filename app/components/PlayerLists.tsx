@@ -131,30 +131,24 @@ const buildPlayerRows = (players: PlayerWithStats[]): PlayerRow[] => {
   });
 };
 
-const sortRows = (rows: PlayerRow[], view: "all" | "active" | "free" | "pending" | "former") => {
-  const getRank = (row: PlayerRow) => (row.rankIsNa || row.rankValue === null ? Infinity : row.rankValue);
+const sortRows = (rows: PlayerRow[]) => {
+  const getRank = (row: PlayerRow) =>
+    row.rankIsNa || row.rankValue === null ? Infinity : row.rankValue;
 
   return [...rows].sort((a, b) => {
-    if (view === "all") {
-      const formerOrder = Number(a.isFormer) - Number(b.isFormer);
-      if (formerOrder !== 0) {
-        return formerOrder;
-      }
+    const formerOrder = Number(a.isFormer) - Number(b.isFormer);
+    if (formerOrder !== 0) {
+      return formerOrder;
+    }
 
-      const leagueOrder = Number(a.rowType === "Womens") - Number(b.rowType === "Womens");
-      if (leagueOrder !== 0) {
-        return leagueOrder;
-      }
+    const leagueOrder = Number(a.rowType === "Womens") - Number(b.rowType === "Womens");
+    if (leagueOrder !== 0) {
+      return leagueOrder;
+    }
 
-      const rankDiff = getRank(a) - getRank(b);
-      if (rankDiff !== 0) {
-        return rankDiff;
-      }
-    } else {
-      const rankDiff = getRank(a) - getRank(b);
-      if (rankDiff !== 0) {
-        return rankDiff;
-      }
+    const rankDiff = getRank(a) - getRank(b);
+    if (rankDiff !== 0) {
+      return rankDiff;
     }
 
     return (a.discordName ?? "").localeCompare(b.discordName ?? "");
@@ -220,8 +214,7 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
         }
 
         return true;
-      }),
-      activeView
+      })
     );
   }, [activeView, leagueFilter, rows, search, statusFilter, teamFilter]);
 

@@ -3,7 +3,7 @@ import type { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 import { hasDatabaseUrl } from "@/lib/db";
 import { buildDiscordAvatarUrl, buildDiscordBannerUrl } from "@/lib/discord";
-import { ensureUserProfile } from "@/lib/queries";
+import { ensurePlayerPlaceholder, ensureUserProfile } from "@/lib/queries";
 
 const parseAdminIds = () =>
   (process.env.ADMIN_DISCORD_IDS ?? "")
@@ -78,6 +78,20 @@ const safeEnsureUserProfile = async (params: {
       return;
     }
     console.error("Failed to ensure user profile", error);
+  }
+};
+
+const safeEnsurePlayerPlaceholder = async (params: {
+  discordId: string;
+  discordName: string | null;
+}) => {
+  try {
+    await ensurePlayerPlaceholder(params);
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return;
+    }
+    console.error("Failed to ensure player placeholder", error);
   }
 };
 
@@ -165,12 +179,17 @@ export const authOptions: NextAuthOptions = {
         if (hasDatabase) {
           const discordId = account.providerAccountId;
           const discordProfile = profile as DiscordProfile | undefined;
+          const discordName = getDiscordProfileName(discordProfile ?? {});
           const avatarUrl = buildDiscordAvatarUrl(discordId, discordProfile?.avatar ?? null);
           const bannerUrl = buildDiscordBannerUrl(discordId, discordProfile?.banner ?? null);
           await safeEnsureUserProfile({
             discordId,
             avatarUrl,
             bannerUrl
+          });
+          await safeEnsurePlayerPlaceholder({
+            discordId,
+            discordName
           });
         }
       }

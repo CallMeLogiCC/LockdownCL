@@ -48,6 +48,24 @@ export type MapLog = {
 export type MatchLogIngest = MatchLog & LogSource;
 export type MapLogIngest = MapLog & LogSource;
 
+export type ScheduleMatch = {
+  schedule_id: string;
+  season: SeasonNumber;
+  week: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  division: string | null;
+  home_team: string | null;
+  away_team: string | null;
+  home_gm: string | null;
+  away_gm: string | null;
+  match_time: string | null;
+  stream_link: string | null;
+  slug: string;
+};
+
+export type ScheduleMatchIngest = ScheduleMatch & LogSource;
+
 export type PlayerLogEntry = {
   match_id: string;
   match_date: string | null;

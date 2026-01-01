@@ -1,12 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getSafeAuthSession } from "@/lib/auth";
+import { hasDatabaseUrl } from "@/lib/db";
+import { getPlayerById } from "@/lib/queries";
 import SignInButton from "@/app/components/SignInButton";
 
 export default async function SiteHeader() {
   const session = await getSafeAuthSession();
   const discordId = session?.user?.discordId ?? null;
   const isLoggedIn = Boolean(discordId);
+  const playerProfile =
+    discordId && hasDatabaseUrl() ? await getPlayerById(discordId) : null;
+  const profileHref = playerProfile ? `/players/${discordId}` : "/howtojoin";
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-slate-950/95 backdrop-blur">
@@ -36,7 +41,7 @@ export default async function SiteHeader() {
         <div className="flex items-center gap-3">
           {isLoggedIn ? (
             <Link
-              href={`/players/${discordId}`}
+              href={profileHref}
               className="rounded-full border border-white/20 px-4 py-2 text-xs uppercase tracking-[0.3em] text-white/80 transition hover:border-white/60 hover:text-white"
             >
               Profile

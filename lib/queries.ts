@@ -17,6 +17,8 @@ import type {
   PlayerMatchSummary,
   PlayerModeStat,
   PlayerTotals,
+  ScheduleMatch,
+  ScheduleMatchIngest,
   PlayerWithStats,
   UserProfile,
   TeamModeWinRateRow
@@ -703,6 +705,34 @@ export async function getPlayerById(discordId: string): Promise<Player | null> {
   return (rows as Player[])[0] ?? null;
 }
 
+export async function ensurePlayerPlaceholder({
+  discordId,
+  discordName
+}: {
+  discordId: string;
+  discordName: string | null;
+}) {
+  await getPool().query(
+    `
+    insert into player_ovr (
+      discord_name,
+      discord_id,
+      ign,
+      rank_value,
+      rank_is_na,
+      team,
+      status,
+      women_status,
+      womens_team,
+      womens_rank
+    )
+    values ($1, $2, null, null, true, 'Former Player', 'Unregistered', 'Unregistered', 'NA', null)
+    on conflict (discord_id) do nothing
+    `,
+    [discordName, discordId]
+  );
+}
+
 export async function getDiscordIdForUserId(userId: string): Promise<string | null> {
   const { rows } = await getPool().query(
     `
@@ -1018,6 +1048,95 @@ export async function getMatchesBySeason(season: SeasonNumber): Promise<MatchLog
   );
 
   return rows as MatchLog[];
+}
+
+export async function getScheduleBySeason(
+  season: SeasonNumber = DEFAULT_SEASON
+): Promise<ScheduleMatch[]> {
+  const { rows } = await getPool().query(
+    `
+    select
+      schedule_id,
+      season,
+      week,
+      start_date,
+      end_date,
+      division,
+      home_team,
+      away_team,
+      home_gm,
+      away_gm,
+      match_time,
+      stream_link,
+      slug
+    from schedule
+    where season = $1
+    order by week asc nulls last, source_row asc
+    `,
+    [season]
+  );
+
+  return rows as ScheduleMatch[];
+}
+
+export async function getScheduleByTeam(
+  team: string,
+  season: SeasonNumber = DEFAULT_SEASON
+): Promise<ScheduleMatch[]> {
+  const { rows } = await getPool().query(
+    `
+    select
+      schedule_id,
+      season,
+      week,
+      start_date,
+      end_date,
+      division,
+      home_team,
+      away_team,
+      home_gm,
+      away_gm,
+      match_time,
+      stream_link,
+      slug
+    from schedule
+    where season = $1 and (home_team = $2 or away_team = $2)
+    order by week asc nulls last, source_row asc
+    `,
+    [season, team]
+  );
+
+  return rows as ScheduleMatch[];
+}
+
+export async function getScheduleBySlug(
+  slug: string,
+  season: SeasonNumber = DEFAULT_SEASON
+): Promise<ScheduleMatch | null> {
+  const { rows } = await getPool().query(
+    `
+    select
+      schedule_id,
+      season,
+      week,
+      start_date,
+      end_date,
+      division,
+      home_team,
+      away_team,
+      home_gm,
+      away_gm,
+      match_time,
+      stream_link,
+      slug
+    from schedule
+    where season = $1 and slug = $2
+    limit 1
+    `,
+    [season, slug]
+  );
+
+  return (rows as ScheduleMatch[])[0] ?? null;
 }
 
 export async function getMapsBySeries(
@@ -1392,6 +1511,77 @@ export async function upsertSeries(series: MatchLogIngest[]): Promise<UpsertCoun
       away_wins = excluded.away_wins,
       series_winner = excluded.series_winner,
       season = excluded.season
+    returning (xmax = 0) as inserted
+  `;
+
+  const result = await getPool().query(query, values);
+  return countUpserts(result.rows as Array<{ inserted: boolean }>);
+}
+
+export async function upsertSchedule(
+  schedule: ScheduleMatchIngest[]
+): Promise<UpsertCounts> {
+  if (schedule.length === 0) {
+    return { inserted: 0, updated: 0 };
+  }
+
+  const values: Array<string | number | null> = [];
+  const rows = schedule.map((entry, index) => {
+    const offset = index * 15;
+    values.push(
+      entry.schedule_id,
+      entry.season,
+      entry.week,
+      entry.start_date,
+      entry.end_date,
+      entry.division,
+      entry.home_team,
+      entry.away_team,
+      entry.home_gm,
+      entry.away_gm,
+      entry.match_time,
+      entry.stream_link,
+      entry.slug,
+      entry.source_sheet,
+      entry.source_row
+    );
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15})`;
+  });
+
+  const query = `
+    insert into schedule (
+      schedule_id,
+      season,
+      week,
+      start_date,
+      end_date,
+      division,
+      home_team,
+      away_team,
+      home_gm,
+      away_gm,
+      match_time,
+      stream_link,
+      slug,
+      source_sheet,
+      source_row
+    )
+    values ${rows.join(", ")}
+    on conflict (source_sheet, source_row)
+    do update set
+      schedule_id = excluded.schedule_id,
+      season = excluded.season,
+      week = excluded.week,
+      start_date = excluded.start_date,
+      end_date = excluded.end_date,
+      division = excluded.division,
+      home_team = excluded.home_team,
+      away_team = excluded.away_team,
+      home_gm = excluded.home_gm,
+      away_gm = excluded.away_gm,
+      match_time = excluded.match_time,
+      stream_link = excluded.stream_link,
+      slug = excluded.slug
     returning (xmax = 0) as inserted
   `;
 
