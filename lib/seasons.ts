@@ -83,6 +83,11 @@ export const getSeasonLeagueOptions = (season: SeasonNumber): LeagueKey[] => {
   return ["Lowers", "Uppers", "Legends", "Womens"];
 };
 
+export const getSeasonTeamOptions = (season: SeasonNumber): string[] => {
+  const leagueTeams = SEASON_TEAM_MAP[season];
+  return (Object.keys(leagueTeams) as LeagueKey[]).flatMap((league) => leagueTeams[league]);
+};
+
 const buildTeamLeagueLookup = (season: SeasonNumber) => {
   const lookup = new Map<string, LeagueKey>();
   const leagueTeams = SEASON_TEAM_MAP[season];

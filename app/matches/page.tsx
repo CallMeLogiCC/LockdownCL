@@ -8,6 +8,7 @@ import {
   SEASON_LABELS,
   getMatchLeague,
   getSeasonLeagueOptions,
+  getSeasonTeamOptions,
   isSeasonValue
 } from "@/lib/seasons";
 
@@ -57,7 +58,7 @@ export default async function MatchesPage({
   const seasonValue = Number(searchParams?.season ?? DEFAULT_SEASON);
   const selectedSeason = isSeasonValue(seasonValue) ? seasonValue : DEFAULT_SEASON;
   const leagueFilter = (searchParams?.league ?? "all").toLowerCase();
-  const teamFilter = (searchParams?.team ?? "").trim();
+  const teamFilter = (searchParams?.team ?? "all").trim();
 
   const matches = await getMatchesBySeason(selectedSeason);
   const matchesWithLeague = matches.map((match) => ({
@@ -69,11 +70,11 @@ export default async function MatchesPage({
     if (leagueFilter !== "all" && match.league.toLowerCase() !== leagueFilter) {
       return false;
     }
-    if (teamFilter) {
+    if (teamFilter && teamFilter !== "all") {
       const query = teamFilter.toLowerCase();
       const home = (match.home_team ?? "").toLowerCase();
       const away = (match.away_team ?? "").toLowerCase();
-      if (!home.includes(query) && !away.includes(query)) {
+      if (home !== query && away !== query) {
         return false;
       }
     }
@@ -81,6 +82,7 @@ export default async function MatchesPage({
   });
 
   const leagueOptions = getSeasonLeagueOptions(selectedSeason);
+  const teamOptions = getSeasonTeamOptions(selectedSeason);
 
   return (
     <section className="flex flex-col gap-6">
@@ -126,14 +128,19 @@ export default async function MatchesPage({
           </label>
 
           <label className="flex flex-col gap-2 text-xs uppercase tracking-[0.3em] text-white/50">
-            Team name
-            <input
-              type="text"
+            Team
+            <select
               name="team"
               defaultValue={teamFilter}
-              placeholder="Search by team"
               className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-            />
+            >
+              <option value="all">All teams</option>
+              {teamOptions.map((team) => (
+                <option key={team} value={team}>
+                  {team}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 

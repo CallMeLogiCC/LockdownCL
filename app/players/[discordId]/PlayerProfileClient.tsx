@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type {
+  MatchPlayerRow,
   PlayerAggregates,
   Player,
   UserProfile
@@ -13,6 +14,8 @@ import { buildSocialUrl, normalizeSocialHandle } from "@/lib/socials";
 import { getTeamDefinitionByName } from "@/lib/teams";
 import TeamLogo from "@/app/components/TeamLogo";
 import type { PlayerSeasonDashboard } from "@/lib/queries";
+import { getMatchLeague } from "@/lib/seasons";
+import { getPlayerTagLabel } from "@/lib/match-mapping";
 
 const seasons = ["Season 0", "Season 1", "Season 2", "Lifetime"] as const;
 const lifetimeTabs = ["BO6", "BO7", "All"] as const;
@@ -41,6 +44,24 @@ const formatModeLabel = (mode: string, season: number | null) => {
 
 const formatModeShort = (mode: string) =>
   mode === "Control" || mode === "Overload" ? "OVRLD" : mode;
+
+const getModeStatColumns = (mode: string, season: number) => {
+  if (mode === "Hardpoint") {
+    return [{ key: "hp_time", label: "HP Time" }];
+  }
+  if (mode === "SnD") {
+    return [
+      { key: "plants", label: "Plants" },
+      { key: "defuses", label: "Defuses" }
+    ];
+  }
+  if (mode === "Control") {
+    return [{ key: "ticks", label: season >= 2 ? "Captures" : "Ticks" }];
+  }
+  return [];
+};
+
+const formatStat = (value: number | null) => (value === null ? "—" : value);
 
 const formatMatchDate = (value: string | null) => {
   if (!value) {
@@ -477,8 +498,7 @@ export default function PlayerProfileClient({
               <div>
                 <h3 className="text-lg font-semibold text-white">Match History</h3>
                 <p className="text-sm text-white/60">
-                  Series are ordered by match date. Map stats are paired by map order within each
-                  mode.
+                  Series are ordered by match date. Map stats follow the series map order.
                 </p>
               </div>
             </div>
@@ -532,61 +552,129 @@ export default function PlayerProfileClient({
                         </div>
                       </summary>
                       <div className="mt-4 space-y-4 text-sm text-white/70">
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-white/60">
-                          <span>
-                            Total K/D: {match.totals.k} / {match.totals.d}
-                          </span>
-                          <span>KD {formatKd(match.totals.k, match.totals.d)}</span>
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="flex flex-wrap items-center gap-4 text-xs text-white/60">
+                            <span>
+                              Total K/D: {match.totals.k} / {match.totals.d}
+                            </span>
+                            <span>KD {formatKd(match.totals.k, match.totals.d)}</span>
+                          </div>
+                          <Link
+                            href={`/matches/${match.match_id}`}
+                            className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-white transition hover:bg-white/20"
+                          >
+                            View Match
+                          </Link>
                         </div>
                         {match.maps.length === 0 ? (
                           <p>No map details recorded.</p>
                         ) : (
                           <div className="space-y-3">
-                            {match.maps.map((map) => (
-                              <div
-                                key={`${match.match_id}-${map.map_num}-${map.mode}`}
-                                className="rounded-xl border border-white/10 bg-white/5 p-3"
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <span className="text-white">
-                                    Map {map.map_num}: {map.map} (
-                                    {formatModeLabel(map.mode, match.season)})
-                                  </span>
-                                  <span className="text-xs text-white/50">
-                                    Winner: {map.winner_team}
-                                  </span>
-                                </div>
-                                <div className="mt-2 text-xs text-white/60">
-                                  {map.player_stats ? (
-                                    <div className="flex flex-wrap items-center gap-3">
-                                      <span>
-                                        {map.player_stats.k} K · {map.player_stats.d} D · KD{" "}
-                                        {formatKd(map.player_stats.k, map.player_stats.d)}
+                            {match.maps.map((map) => {
+                              const statColumns = getModeStatColumns(map.mode, match.season);
+                              const matchLeague = getMatchLeague(
+                                match.season,
+                                match.home_team,
+                                match.away_team
+                              );
+                              return (
+                                <details
+                                  key={`${match.match_id}-${map.map_num}-${map.mode}`}
+                                  className="rounded-xl border border-white/10 bg-white/5 p-3"
+                                >
+                                  <summary className="cursor-pointer list-none">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <span className="text-white">
+                                        Map {map.map_num}: {map.map} (
+                                        {formatModeLabel(map.mode, match.season)})
                                       </span>
-                                      {map.player_stats.is_esub ? (
-                                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.3em] text-emerald-200">
-                                          ESub
-                                        </span>
-                                      ) : null}
-                                      {map.mode === "Hardpoint" ? (
-                                        <span>HP Time: {map.player_stats.hp_time ?? 0}</span>
-                                      ) : null}
-                                      {map.mode === "SnD" ? (
-                                        <span>
-                                          Plants: {map.player_stats.plants ?? 0} · Defuses:{" "}
-                                          {map.player_stats.defuses ?? 0}
-                                        </span>
-                                      ) : null}
-                                      {map.mode === "Control" ? (
-                                        <span>Ticks: {map.player_stats.ticks ?? 0}</span>
-                                      ) : null}
+                                      <span className="text-xs text-white/50">
+                                        Winner: {map.winner_team}
+                                      </span>
                                     </div>
-                                  ) : (
-                                    "No player stats for this map."
-                                  )}
-                                </div>
-                              </div>
-                            ))}
+                                  </summary>
+                                  <div className="mt-3 overflow-x-auto rounded-xl border border-white/10">
+                                    <table className="min-w-full divide-y divide-white/10 text-xs">
+                                      <thead className="bg-white/5 text-left uppercase tracking-widest text-white/50">
+                                        <tr>
+                                          <th className="px-3 py-2">Player</th>
+                                          <th className="px-3 py-2">Team</th>
+                                          <th className="px-3 py-2">Kills</th>
+                                          <th className="px-3 py-2">Deaths</th>
+                                          <th className="px-3 py-2">KD</th>
+                                          {statColumns.map((column) => (
+                                            <th key={column.key} className="px-3 py-2">
+                                              {column.label}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-white/10">
+                                        {map.players.length === 0 ? (
+                                          <tr>
+                                            <td
+                                              colSpan={5 + statColumns.length}
+                                              className="px-3 py-4 text-center text-white/60"
+                                            >
+                                              No player stats recorded for this map.
+                                            </td>
+                                          </tr>
+                                        ) : (
+                                          map.players.map((row: MatchPlayerRow) => {
+                                            const tag = getPlayerTagLabel({
+                                              row,
+                                              matchLeague,
+                                              season: match.season
+                                            });
+                                            return (
+                                              <tr
+                                                key={`${row.discord_id}-${row.source_row}`}
+                                                className="hover:bg-white/5"
+                                              >
+                                                <td className="px-3 py-2 text-white">
+                                                  <Link href={`/players/${row.discord_id}`}>
+                                                    {row.player ?? "Unknown"}
+                                                  </Link>
+                                                  {tag ? (
+                                                    <span className="ml-1 text-[10px] uppercase tracking-[0.3em] text-white/50">
+                                                      ({tag})
+                                                    </span>
+                                                  ) : null}
+                                                </td>
+                                                <td className="px-3 py-2 text-white/70">
+                                                  {row.team ?? "—"}
+                                                </td>
+                                                <td className="px-3 py-2 text-white/70">
+                                                  {formatStat(row.k)}
+                                                </td>
+                                                <td className="px-3 py-2 text-white/70">
+                                                  {formatStat(row.d)}
+                                                </td>
+                                                <td className="px-3 py-2 text-white/70">
+                                                  {row.kd ?? "—"}
+                                                </td>
+                                                {statColumns.map((column) => (
+                                                  <td
+                                                    key={column.key}
+                                                    className="px-3 py-2 text-white/70"
+                                                  >
+                                                    {formatStat(
+                                                      row[column.key as keyof MatchPlayerRow] as
+                                                        | number
+                                                        | null
+                                                    )}
+                                                  </td>
+                                                ))}
+                                              </tr>
+                                            );
+                                          })
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </details>
+                              );
+                            })}
                           </div>
                         )}
                       </div>

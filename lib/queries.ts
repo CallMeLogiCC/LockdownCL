@@ -28,6 +28,7 @@ import {
 } from "@/lib/league";
 import { DEFAULT_SEASON, getMatchLeague, type SeasonNumber } from "@/lib/seasons";
 import { TEAM_DEFS } from "@/lib/teams";
+import { assignMapNumbersToPlayerRows } from "@/lib/match-mapping";
 
 export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
   const { rows } = await getPool().query(
@@ -352,12 +353,16 @@ const buildPlayerMatchHistory = ({
   playerLogs,
   matchLogs,
   mapLogs,
-  currentPlayer
+  matchPlayerRows,
+  currentPlayer,
+  playerDiscordId
 }: {
   playerLogs: PlayerLogRow[];
   matchLogs: MatchLog[];
   mapLogs: MapLog[];
+  matchPlayerRows: MatchPlayerRow[];
   currentPlayer: Player | null;
+  playerDiscordId: string;
 }): PlayerMatchHistoryEntry[] => {
   const matchTeams = getMatchTeamMap(playerLogs);
   const playerLogsByMatch = new Map<string, PlayerLogRow[]>();
@@ -368,13 +373,19 @@ const buildPlayerMatchHistory = ({
     playerLogsByMatch.get(row.match_id)?.push(row);
   });
 
-  const playerLogsByMatchMode = buildPlayerLogsByMatchMode(playerLogs);
   const mapLogsByMatch = new Map<string, MapLog[]>();
   mapLogs.forEach((row) => {
     if (!mapLogsByMatch.has(row.match_id)) {
       mapLogsByMatch.set(row.match_id, []);
     }
     mapLogsByMatch.get(row.match_id)?.push(row);
+  });
+  const matchPlayerRowsByMatch = new Map<string, MatchPlayerRow[]>();
+  matchPlayerRows.forEach((row) => {
+    if (!matchPlayerRowsByMatch.has(row.match_id)) {
+      matchPlayerRowsByMatch.set(row.match_id, []);
+    }
+    matchPlayerRowsByMatch.get(row.match_id)?.push(row);
   });
 
   const coedLeague = currentPlayer
@@ -408,20 +419,29 @@ const buildPlayerMatchHistory = ({
     );
 
     const matchMapRows = mapLogsByMatch.get(match.match_id) ?? [];
-    const modeCounters: Record<string, number> = {
-      Hardpoint: 0,
-      SnD: 0,
-      Control: 0
-    };
+    const matchPlayerLogRows = matchPlayerRowsByMatch.get(match.match_id) ?? [];
+    const mapAssignedRows = assignMapNumbersToPlayerRows({
+      playerRows: matchPlayerLogRows,
+      mapLogs: matchMapRows,
+      season: match.season
+    });
+    const mapPlayersByMapNum = new Map<number, MatchPlayerRow[]>();
+    mapAssignedRows.forEach((row) => {
+      if (!row.map_num) {
+        return;
+      }
+      if (!mapPlayersByMapNum.has(row.map_num)) {
+        mapPlayersByMapNum.set(row.map_num, []);
+      }
+      mapPlayersByMapNum.get(row.map_num)?.push(row);
+    });
 
     const maps = matchMapRows.map((mapRow) => {
-      const counter = modeCounters[mapRow.mode] ?? 0;
-      const playerRows =
-        playerLogsByMatchMode.get(buildModeKey(match.match_id, mapRow.mode)) ?? [];
-      const playerRow = playerRows[counter];
-      modeCounters[mapRow.mode] = counter + 1;
+      const mapPlayers = mapPlayersByMapNum.get(mapRow.map_num) ?? [];
+      const playerMapRow =
+        mapPlayers.find((row) => row.discord_id === playerDiscordId) ?? null;
 
-      const writeIn = playerRow?.write_in ?? null;
+      const writeIn = playerMapRow?.write_in ?? null;
       const isESub = match.season >= 2 && isESubEntry(writeIn);
 
       return {
@@ -430,18 +450,20 @@ const buildPlayerMatchHistory = ({
         map: mapRow.map,
         winner_team: mapRow.winner_team,
         losing_team: mapRow.losing_team,
-        player_stats: playerRow
+        player_stats: playerMapRow
           ? {
-              k: playerRow.k ?? 0,
-              d: playerRow.d ?? 0,
-              hp_time: playerRow.hp_time,
-              plants: playerRow.plants,
-              defuses: playerRow.defuses,
-              ticks: playerRow.ticks,
+              k: playerMapRow.k ?? 0,
+              d: playerMapRow.d ?? 0,
+              hp_time: playerMapRow.hp_time,
+              plants: playerMapRow.plants,
+              defuses: playerMapRow.defuses,
+              ticks: playerMapRow.ticks,
               write_in: writeIn,
               is_esub: isESub
             }
           : null
+        ,
+        players: mapPlayers
       };
     });
 
@@ -520,11 +542,15 @@ export async function getPlayerMatchHistory(
 ): Promise<PlayerMatchHistoryEntry[]> {
   const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
   const currentPlayer = await getPlayerById(discordId);
+  const matchIds = Array.from(new Set(matchLogs.map((row) => row.match_id)));
+  const matchPlayerRows = await getMatchPlayerRowsByMatchIds(matchIds);
   return buildPlayerMatchHistory({
     playerLogs,
     matchLogs,
     mapLogs,
-    currentPlayer
+    matchPlayerRows,
+    currentPlayer,
+    playerDiscordId: discordId
   });
 }
 
@@ -557,11 +583,14 @@ export async function getPlayerSeasonDashboard(
 ): Promise<PlayerSeasonDashboard> {
   const { playerLogs, matchLogs, mapLogs } = await getPlayerPageBaseData(discordId);
   const currentPlayer = await getPlayerById(discordId);
+  const allMatchIds = Array.from(new Set(matchLogs.map((row) => row.match_id)));
+  const matchPlayerRows = await getMatchPlayerRowsByMatchIds(allMatchIds);
 
   const buildSeasonData = (season: SeasonNumber): PlayerSeasonDataset => {
     const seasonPlayerLogs = filterRowsBySeasons(playerLogs, [season]);
     const seasonMatchLogs = filterRowsBySeasons(matchLogs, [season]);
     const seasonMapLogs = filterRowsBySeasons(mapLogs, [season]);
+    const seasonMatchPlayerRows = filterRowsBySeasons(matchPlayerRows, [season]);
     const matchIds = Array.from(new Set(seasonPlayerLogs.map((row) => row.match_id)));
     const mapLists = season === 2 ? BO7_MAP_LISTS : BO6_MAP_LISTS;
     const labelForMode = (mode: string) =>
@@ -584,7 +613,9 @@ export async function getPlayerSeasonDashboard(
         playerLogs: seasonPlayerLogs,
         matchLogs: seasonMatchLogs,
         mapLogs: seasonMapLogs,
-        currentPlayer
+        matchPlayerRows: seasonMatchPlayerRows,
+        currentPlayer,
+        playerDiscordId: discordId
       })
     };
   };
@@ -653,7 +684,9 @@ export async function getPlayerSeasonDashboard(
       playerLogs,
       matchLogs,
       mapLogs,
-      currentPlayer
+      matchPlayerRows,
+      currentPlayer,
+      playerDiscordId: discordId
     })
   };
 }
@@ -993,6 +1026,44 @@ export async function getMapsByMatchIds(matchIds: string[]): Promise<MapLog[]> {
   return rows as MapLog[];
 }
 
+export async function getMatchPlayerRowsByMatchIds(
+  matchIds: string[]
+): Promise<MatchPlayerRow[]> {
+  if (matchIds.length === 0) {
+    return [];
+  }
+
+  const { rows } = await getPool().query(
+    `
+    select
+      pl.match_id,
+      pl.mode,
+      pl.player,
+      pl.discord_id,
+      pl.team,
+      pl.k,
+      pl.d,
+      pl.kd,
+      pl.hp_time,
+      pl.plants,
+      pl.defuses,
+      pl.ticks,
+      pl.season,
+      pl.write_in,
+      pl.source_row,
+      po.team as current_team,
+      po.womens_team as current_womens_team
+    from player_log pl
+    left join player_ovr po on po.discord_id = pl.discord_id
+    where pl.match_id = any($1::text[])
+    order by pl.match_id, pl.source_row
+    `,
+    [matchIds]
+  );
+
+  return rows as MatchPlayerRow[];
+}
+
 export async function getMatchPlayerRows(
   matchId: string,
   season?: SeasonNumber
@@ -1012,10 +1083,15 @@ export async function getMatchPlayerRows(
       pl.plants,
       pl.defuses,
       pl.ticks,
-      pl.season
+      pl.season,
+      pl.write_in,
+      pl.source_row,
+      po.team as current_team,
+      po.womens_team as current_womens_team
     from player_log pl
+    left join player_ovr po on po.discord_id = pl.discord_id
     where pl.match_id = $1${season !== undefined ? " and pl.season = $2" : ""}
-    order by pl.mode, pl.team, pl.player
+    order by pl.source_row
     `,
     season !== undefined ? [matchId, season] : [matchId]
   );
