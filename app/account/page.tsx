@@ -27,7 +27,7 @@ export default async function AccountPage() {
   const discordId = session?.user?.discordId ?? null;
 
   if (!discordId) {
-    redirect("/api/auth/signin?callbackUrl=/account");
+    redirect("/auth/signin?callbackUrl=/account");
   }
 
   const [playerProfile, userProfile] = await Promise.all([
@@ -69,7 +69,7 @@ export default async function AccountPage() {
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
           <p className="text-white">You are not registered for the league.</p>
           <p className="mt-2">
-            To register, join the Discord and register there: {" "}
+            To register, join the Discord and register there:{" "}
             <a
               href="https://discord.gg/SMZ4R8XzWZ"
               target="_blank"
