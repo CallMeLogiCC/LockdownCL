@@ -32,6 +32,9 @@ import { DEFAULT_SEASON, getMatchLeague, type SeasonNumber } from "@/lib/seasons
 import { TEAM_DEFS } from "@/lib/teams";
 import { assignMapNumbersToPlayerRows } from "@/lib/match-mapping";
 
+const isMissingTableError = (error: unknown) =>
+  (error as { code?: string }).code === "42P01";
+
 export async function listPlayersWithStats(): Promise<PlayerWithStats[]> {
   const { rows } = await getPool().query(
     `
@@ -767,7 +770,7 @@ export async function getUserProfile(discordId: string): Promise<UserProfile | n
 
     return (rows as UserProfile[])[0] ?? null;
   } catch (error) {
-    if ((error as { code?: string }).code === "42P01") {
+    if (isMissingTableError(error)) {
       return null;
     }
     throw error;
@@ -793,7 +796,7 @@ export async function getPrizePool(): Promise<PrizePoolRow | null> {
 
     return (rows as PrizePoolRow[])[0] ?? null;
   } catch (error) {
-    if ((error as { code?: string }).code === "42P01") {
+    if (isMissingTableError(error)) {
       return null;
     }
     throw error;
@@ -819,7 +822,7 @@ export async function ensureUserProfile({
       [discordId, avatarUrl, bannerUrl]
     );
   } catch (error) {
-    if ((error as { code?: string }).code === "42P01") {
+    if (isMissingTableError(error)) {
       return;
     }
     throw error;
@@ -879,7 +882,7 @@ export async function updateUserProfile({
     );
     return true;
   } catch (error) {
-    if ((error as { code?: string }).code === "42P01") {
+    if (isMissingTableError(error)) {
       return false;
     }
     throw error;
@@ -1053,90 +1056,111 @@ export async function getMatchesBySeason(season: SeasonNumber): Promise<MatchLog
 export async function getScheduleBySeason(
   season: SeasonNumber = DEFAULT_SEASON
 ): Promise<ScheduleMatch[]> {
-  const { rows } = await getPool().query(
-    `
-    select
-      schedule_id,
-      season,
-      week,
-      start_date,
-      end_date,
-      division,
-      home_team,
-      away_team,
-      home_gm,
-      away_gm,
-      match_time,
-      stream_link,
-      slug
-    from schedule
-    where season = $1
-    order by week asc nulls last, source_row asc
-    `,
-    [season]
-  );
+  try {
+    const { rows } = await getPool().query(
+      `
+      select
+        schedule_id,
+        season,
+        week,
+        start_date,
+        end_date,
+        division,
+        home_team,
+        away_team,
+        home_gm,
+        away_gm,
+        match_time,
+        stream_link,
+        slug
+      from schedule
+      where season = $1
+      order by week asc nulls last, source_row asc
+      `,
+      [season]
+    );
 
-  return rows as ScheduleMatch[];
+    return rows as ScheduleMatch[];
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function getScheduleByTeam(
   team: string,
   season: SeasonNumber = DEFAULT_SEASON
 ): Promise<ScheduleMatch[]> {
-  const { rows } = await getPool().query(
-    `
-    select
-      schedule_id,
-      season,
-      week,
-      start_date,
-      end_date,
-      division,
-      home_team,
-      away_team,
-      home_gm,
-      away_gm,
-      match_time,
-      stream_link,
-      slug
-    from schedule
-    where season = $1 and (home_team = $2 or away_team = $2)
-    order by week asc nulls last, source_row asc
-    `,
-    [season, team]
-  );
+  try {
+    const { rows } = await getPool().query(
+      `
+      select
+        schedule_id,
+        season,
+        week,
+        start_date,
+        end_date,
+        division,
+        home_team,
+        away_team,
+        home_gm,
+        away_gm,
+        match_time,
+        stream_link,
+        slug
+      from schedule
+      where season = $1 and (home_team = $2 or away_team = $2)
+      order by week asc nulls last, source_row asc
+      `,
+      [season, team]
+    );
 
-  return rows as ScheduleMatch[];
+    return rows as ScheduleMatch[];
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function getScheduleBySlug(
   slug: string,
   season: SeasonNumber = DEFAULT_SEASON
 ): Promise<ScheduleMatch | null> {
-  const { rows } = await getPool().query(
-    `
-    select
-      schedule_id,
-      season,
-      week,
-      start_date,
-      end_date,
-      division,
-      home_team,
-      away_team,
-      home_gm,
-      away_gm,
-      match_time,
-      stream_link,
-      slug
-    from schedule
-    where season = $1 and slug = $2
-    limit 1
-    `,
-    [season, slug]
-  );
+  try {
+    const { rows } = await getPool().query(
+      `
+      select
+        schedule_id,
+        season,
+        week,
+        start_date,
+        end_date,
+        division,
+        home_team,
+        away_team,
+        home_gm,
+        away_gm,
+        match_time,
+        stream_link,
+        slug
+      from schedule
+      where season = $1 and slug = $2
+      limit 1
+      `,
+      [season, slug]
+    );
 
-  return (rows as ScheduleMatch[])[0] ?? null;
+    return (rows as ScheduleMatch[])[0] ?? null;
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function getMapsBySeries(

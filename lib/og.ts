@@ -11,7 +11,11 @@ export const getLogoDataUrl = async (origin?: string) => {
   const baseUrl = origin ?? SITE_URL;
   const logoUrl = new URL(BRAND_LOGO_PATH, baseUrl).toString();
   const response = await fetch(logoUrl);
+  if (!response.ok) {
+    return logoUrl;
+  }
   const arrayBuffer = await response.arrayBuffer();
   const base64 = arrayBufferToBase64(arrayBuffer);
-  return `data:image/svg+xml;base64,${base64}`;
+  const contentType = response.headers.get("content-type") ?? "image/jpeg";
+  return `data:${contentType};base64,${base64}`;
 };
