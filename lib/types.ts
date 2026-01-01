@@ -156,6 +156,11 @@ export type MatchPlayerRow = {
   defuses: number | null;
   ticks: number | null;
   season: SeasonNumber;
+  write_in: string | null;
+  source_row: number;
+  current_team: string | null;
+  current_womens_team: string | null;
+  map_num?: number;
 };
 
 export type PlayerAggregates = {
@@ -206,6 +211,7 @@ export type PlayerMatchMapDetail = {
     write_in: string | null;
     is_esub: boolean;
   } | null;
+  players: MatchPlayerRow[];
 };
 
 export type PlayerMatchSeriesTags = {

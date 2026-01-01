@@ -12,6 +12,8 @@ import {
   getMatchWinner,
   SITE_NAME
 } from "@/lib/seo";
+import { getMatchLeague } from "@/lib/seasons";
+import { assignMapNumbersToPlayerRows, getPlayerTagLabel } from "@/lib/match-mapping";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +80,22 @@ export async function generateMetadata({
 
 const formatStat = (value: number | null) => (value === null ? "—" : value);
 
+const getModeStatColumns = (mode: string, season: number) => {
+  if (mode === "Hardpoint") {
+    return [{ key: "hp_time", label: "HP Time" }];
+  }
+  if (mode === "SnD") {
+    return [
+      { key: "plants", label: "Plants" },
+      { key: "defuses", label: "Defuses" }
+    ];
+  }
+  if (mode === "Control") {
+    return [{ key: "ticks", label: season >= 2 ? "Captures" : "Ticks" }];
+  }
+  return [];
+};
+
 export default async function MatchPage({ params }: { params: { matchId: string } }) {
   if (!hasDatabaseUrl()) {
     return (
@@ -102,6 +120,22 @@ export default async function MatchPage({ params }: { params: { matchId: string 
   const winner = getMatchWinner(match) ?? "TBD";
   const formatModeLabel = (mode: string) =>
     match.season === 2 && mode === "Control" ? "Overload" : mode;
+  const matchLeague = getMatchLeague(match.season, match.home_team, match.away_team);
+  const mapAssignedRows = assignMapNumbersToPlayerRows({
+    playerRows,
+    mapLogs: maps,
+    season: match.season
+  });
+  const mapPlayersByMapNum = new Map<number, typeof mapAssignedRows>();
+  mapAssignedRows.forEach((row) => {
+    if (!row.map_num) {
+      return;
+    }
+    if (!mapPlayersByMapNum.has(row.map_num)) {
+      mapPlayersByMapNum.set(row.map_num, []);
+    }
+    mapPlayersByMapNum.get(row.map_num)?.push(row);
+  });
 
   return (
     <section className="flex flex-col gap-6">
@@ -155,7 +189,8 @@ export default async function MatchPage({ params }: { params: { matchId: string 
         ) : (
           <div className="mt-4 space-y-3">
             {maps.map((map) => {
-              const mapPlayers = playerRows.filter((row) => row.mode === map.mode);
+              const mapPlayers = mapPlayersByMapNum.get(map.map_num) ?? [];
+              const statColumns = getModeStatColumns(map.mode, match.season);
               return (
                 <details
                   key={`${map.match_id}-${map.map_num}`}
@@ -169,9 +204,6 @@ export default async function MatchPage({ params }: { params: { matchId: string 
                       <span className="text-xs text-white/50">Winner: {map.winner_team}</span>
                     </div>
                   </summary>
-                  <div className="mt-3 text-xs text-white/60">
-                    Player stats are grouped by mode because map numbers are not stored in player logs.
-                  </div>
                   <div className="mt-3 overflow-x-auto rounded-xl border border-white/10">
                     <table className="min-w-full divide-y divide-white/10 text-xs">
                       <thead className="bg-white/5 text-left uppercase tracking-widest text-white/50">
@@ -181,37 +213,54 @@ export default async function MatchPage({ params }: { params: { matchId: string 
                           <th className="px-3 py-2">Kills</th>
                           <th className="px-3 py-2">Deaths</th>
                           <th className="px-3 py-2">KD</th>
-                          <th className="px-3 py-2">HP Time</th>
-                          <th className="px-3 py-2">Plants</th>
-                          <th className="px-3 py-2">Defuses</th>
-                          <th className="px-3 py-2">Ticks</th>
+                          {statColumns.map((column) => (
+                            <th key={column.key} className="px-3 py-2">
+                              {column.label}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/10">
                         {mapPlayers.length === 0 ? (
                           <tr>
-                            <td colSpan={9} className="px-3 py-4 text-center text-white/60">
+                            <td
+                              colSpan={5 + statColumns.length}
+                              className="px-3 py-4 text-center text-white/60"
+                            >
                               No player stats recorded for this mode.
                             </td>
                           </tr>
                         ) : (
-                          mapPlayers.map((row) => (
-                            <tr key={`${row.discord_id}-${row.mode}`} className="hover:bg-white/5">
-                              <td className="px-3 py-2 text-white">
-                                <Link href={`/players/${row.discord_id}`}>
-                                  {row.player ?? "Unknown"}
-                                </Link>
-                              </td>
-                              <td className="px-3 py-2 text-white/70">{row.team ?? "—"}</td>
-                              <td className="px-3 py-2 text-white/70">{formatStat(row.k)}</td>
-                              <td className="px-3 py-2 text-white/70">{formatStat(row.d)}</td>
-                              <td className="px-3 py-2 text-white/70">{row.kd ?? "—"}</td>
-                              <td className="px-3 py-2 text-white/70">{formatStat(row.hp_time)}</td>
-                              <td className="px-3 py-2 text-white/70">{formatStat(row.plants)}</td>
-                              <td className="px-3 py-2 text-white/70">{formatStat(row.defuses)}</td>
-                              <td className="px-3 py-2 text-white/70">{formatStat(row.ticks)}</td>
-                            </tr>
-                          ))
+                          mapPlayers.map((row) => {
+                            const tag = getPlayerTagLabel({
+                              row,
+                              matchLeague,
+                              season: match.season
+                            });
+                            return (
+                              <tr key={`${row.discord_id}-${row.source_row}`} className="hover:bg-white/5">
+                                <td className="px-3 py-2 text-white">
+                                  <Link href={`/players/${row.discord_id}`}>
+                                    {row.player ?? "Unknown"}
+                                  </Link>
+                                  {tag ? (
+                                    <span className="ml-1 text-[10px] uppercase tracking-[0.3em] text-white/50">
+                                      ({tag})
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td className="px-3 py-2 text-white/70">{row.team ?? "—"}</td>
+                                <td className="px-3 py-2 text-white/70">{formatStat(row.k)}</td>
+                                <td className="px-3 py-2 text-white/70">{formatStat(row.d)}</td>
+                                <td className="px-3 py-2 text-white/70">{row.kd ?? "—"}</td>
+                                {statColumns.map((column) => (
+                                  <td key={column.key} className="px-3 py-2 text-white/70">
+                                    {formatStat(row[column.key as keyof typeof row] as number | null)}
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
