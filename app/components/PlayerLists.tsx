@@ -5,17 +5,29 @@ import Link from "next/link";
 import type { PlayerWithStats } from "@/lib/types";
 import {
   LEAGUE_LABELS,
-  LeagueKey,
-  getLeagueForPlayer,
-  getPlayerRankForLeague,
-  getPlayerStatusForLeague,
-  getPlayerTeamForLeague,
+  type LeagueKey,
+  getLeagueForRank,
   isCoedRegistered,
   isFormerPlayer,
-  isFreeAgent,
   isWomensRegistered
 } from "@/lib/league";
-import { TEAM_DEFS, getTeamDefinitionByName, getTeamsForLeague } from "@/lib/teams";
+import { TEAM_DEFS, getTeamDefinitionByName } from "@/lib/teams";
+
+type PlayerRow = {
+  rowId: string;
+  discordId: string;
+  discordName: string | null;
+  ign: string | null;
+  rankValue: number | null;
+  rankIsNa: boolean;
+  team: string | null;
+  status: string | null;
+  total_k: number;
+  total_d: number;
+  leagueKey: LeagueKey | null;
+  rowType: "Open" | "Womens";
+  isFormer: boolean;
+};
 
 const formatIgn = (ign: string | null) => (ign && ign.trim() ? ign : "N/A");
 
@@ -40,25 +52,6 @@ const formatKd = (kills: number, deaths: number) => {
   return (kills / deaths).toFixed(2);
 };
 
-const sortPlayers = (players: PlayerWithStats[], league: LeagueKey | "All") => {
-  return [...players].sort((a, b) => {
-    const rankA = league === "Womens" ? a.womens_rank : a.rank_value;
-    const rankB = league === "Womens" ? b.womens_rank : b.rank_value;
-    const naA =
-      league === "Womens" ? a.womens_rank === null : a.rank_is_na || a.rank_value === null;
-    const naB =
-      league === "Womens" ? b.womens_rank === null : b.rank_is_na || b.rank_value === null;
-
-    if (naA !== naB) {
-      return naA ? 1 : -1;
-    }
-    if (rankA !== rankB) {
-      return (rankA ?? 0) - (rankB ?? 0);
-    }
-    return (a.discord_name ?? "").localeCompare(b.discord_name ?? "");
-  });
-};
-
 const normalize = (value: string | null) => (value ?? "").toLowerCase();
 
 const leagueOptions = ["All", ...LEAGUE_LABELS];
@@ -66,81 +59,160 @@ const leagueOptions = ["All", ...LEAGUE_LABELS];
 const getTeamOptions = () =>
   TEAM_DEFS.map((team) => team.displayName).sort((a, b) => a.localeCompare(b));
 
-const getStatusOptions = (players: PlayerWithStats[]) => {
+const getStatusOptions = (rows: PlayerRow[]) => {
   const statuses = new Set<string>();
-  players.forEach((player) => {
-    if (player.status) {
-      statuses.add(player.status);
-    }
-    if (player.women_status) {
-      statuses.add(player.women_status);
+  rows.forEach((row) => {
+    if (row.status) {
+      statuses.add(row.status);
     }
   });
   return Array.from(statuses).sort((a, b) => a.localeCompare(b));
 };
 
+const isFreeAgentStatus = (status: string | null) =>
+  status?.toLowerCase().includes("free agent") ?? false;
+
+const isPendingStatus = (status: string | null) =>
+  status?.toLowerCase().includes("pending") ?? false;
+
+const isFormerStatus = (status: string | null, team: string | null) => {
+  const normalizedStatus = status?.toLowerCase() ?? "";
+  const normalizedTeam = team?.toLowerCase() ?? "";
+  return (
+    normalizedStatus === "former player" ||
+    normalizedStatus === "unregistered" ||
+    normalizedTeam === "former player"
+  );
+};
+
+const buildPlayerRows = (players: PlayerWithStats[]): PlayerRow[] => {
+  return players.flatMap((player) => {
+    const rows: PlayerRow[] = [];
+    const womensRegistered = isWomensRegistered(player);
+    const womensOnly = womensRegistered && !isCoedRegistered(player);
+
+    if (!womensOnly) {
+      rows.push({
+        rowId: `${player.discord_id}-open`,
+        discordId: player.discord_id,
+        discordName: player.discord_name,
+        ign: player.ign,
+        rankValue: player.rank_value,
+        rankIsNa: player.rank_is_na || player.rank_value === null,
+        team: player.team,
+        status: player.status,
+        total_k: player.total_k,
+        total_d: player.total_d,
+        leagueKey: getLeagueForRank(player.rank_value, player.rank_is_na),
+        rowType: "Open",
+        isFormer: isFormerPlayer(player)
+      });
+    }
+
+    if (womensRegistered) {
+      rows.push({
+        rowId: `${player.discord_id}-womens`,
+        discordId: player.discord_id,
+        discordName: player.discord_name,
+        ign: player.ign,
+        rankValue: player.womens_rank,
+        rankIsNa: player.womens_rank === null,
+        team: player.womens_team,
+        status: player.women_status,
+        total_k: player.total_k,
+        total_d: player.total_d,
+        leagueKey: "Womens",
+        rowType: "Womens",
+        isFormer: isFormerStatus(player.women_status, player.womens_team)
+      });
+    }
+
+    return rows;
+  });
+};
+
+const sortRows = (rows: PlayerRow[], view: "all" | "active" | "free" | "pending" | "former") => {
+  const getRank = (row: PlayerRow) => (row.rankIsNa || row.rankValue === null ? Infinity : row.rankValue);
+
+  return [...rows].sort((a, b) => {
+    if (view === "all") {
+      const formerOrder = Number(a.isFormer) - Number(b.isFormer);
+      if (formerOrder !== 0) {
+        return formerOrder;
+      }
+
+      const leagueOrder = Number(a.rowType === "Womens") - Number(b.rowType === "Womens");
+      if (leagueOrder !== 0) {
+        return leagueOrder;
+      }
+
+      const rankDiff = getRank(a) - getRank(b);
+      if (rankDiff !== 0) {
+        return rankDiff;
+      }
+    } else {
+      const rankDiff = getRank(a) - getRank(b);
+      if (rankDiff !== 0) {
+        return rankDiff;
+      }
+    }
+
+    return (a.discordName ?? "").localeCompare(b.discordName ?? "");
+  });
+};
+
 export default function PlayerLists({ players }: { players: PlayerWithStats[] }) {
-  const [activeView, setActiveView] = useState<"all" | "teams" | "free" | "former">("all");
+  const [activeView, setActiveView] = useState<
+    "all" | "active" | "free" | "pending" | "former"
+  >("all");
   const [search, setSearch] = useState("");
   const [leagueFilter, setLeagueFilter] = useState<LeagueKey | "All">("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [teamFilter, setTeamFilter] = useState("All");
 
+  const rows = useMemo(() => buildPlayerRows(players), [players]);
   const teamOptions = useMemo(() => getTeamOptions(), []);
-  const statusOptions = useMemo(() => getStatusOptions(players), [players]);
+  const statusOptions = useMemo(() => getStatusOptions(rows), [rows]);
 
-  const filteredPlayers = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const searchValue = search.trim().toLowerCase();
 
-    const basePlayers = players.filter((player) => {
+    const baseRows = rows.filter((row) => {
       if (activeView === "former") {
-        return isFormerPlayer(player);
+        return row.isFormer;
       }
       if (activeView === "free") {
-        return isFreeAgent(player);
+        return isFreeAgentStatus(row.status);
       }
-      if (activeView === "all") {
-        return !isFormerPlayer(player);
+      if (activeView === "pending") {
+        return isPendingStatus(row.status);
+      }
+      if (activeView === "active") {
+        return !row.isFormer && !isFreeAgentStatus(row.status) && !isPendingStatus(row.status);
       }
       return true;
     });
 
-    return sortPlayers(
-      basePlayers.filter((player) => {
-        if (leagueFilter !== "All") {
-          if (leagueFilter === "Womens") {
-            if (!isWomensRegistered(player)) {
-              return false;
-            }
-          }
-
-          if (!getLeagueForPlayer(player, leagueFilter)) {
-            return false;
-          }
+    return sortRows(
+      baseRows.filter((row) => {
+        if (leagueFilter !== "All" && row.leagueKey !== leagueFilter) {
+          return false;
         }
 
-        if (teamFilter !== "All") {
-          const matchesTeam =
-            player.team === teamFilter || player.womens_team === teamFilter;
-          if (!matchesTeam) {
-            return false;
-          }
+        if (teamFilter !== "All" && row.team !== teamFilter) {
+          return false;
         }
 
-        if (statusFilter !== "All") {
-          const matchesStatus =
-            player.status === statusFilter || player.women_status === statusFilter;
-          if (!matchesStatus) {
-            return false;
-          }
+        if (statusFilter !== "All" && row.status !== statusFilter) {
+          return false;
         }
 
         if (searchValue) {
           const combined = [
-            normalize(player.discord_name),
-            normalize(player.ign),
-            normalize(player.team),
-            normalize(player.womens_team)
+            normalize(row.discordName),
+            normalize(row.ign),
+            normalize(row.team),
+            normalize(row.status)
           ].join(" ");
           if (!combined.includes(searchValue)) {
             return false;
@@ -149,40 +221,33 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
 
         return true;
       }),
-      leagueFilter
+      activeView
     );
-  }, [activeView, leagueFilter, players, search, statusFilter, teamFilter]);
+  }, [activeView, leagueFilter, rows, search, statusFilter, teamFilter]);
 
-  const renderPlayerRow = (player: PlayerWithStats, league: LeagueKey | "All") => {
-    const leagueKey = league === "All" ? "Lowers" : league;
-    const team = getPlayerTeamForLeague(player, leagueKey);
-    const status = getPlayerStatusForLeague(player, leagueKey);
-    const rankValue = getPlayerRankForLeague(player, leagueKey);
-    const rankIsNa = leagueKey === "Womens" ? rankValue === null : !isCoedRegistered(player);
-    const teamDef = getTeamDefinitionByName(team);
+  const renderPlayerRow = (row: PlayerRow) => {
+    const teamDef = getTeamDefinitionByName(row.team);
 
     return (
-      <tr key={player.discord_id} className="hover:bg-white/5">
+      <tr key={row.rowId} className="hover:bg-white/5">
         <td className="px-4 py-3 text-white">
-          <Link href={`/players/${player.discord_id}`} className="font-semibold">
-            {player.discord_name ?? "Unknown"}
+          <Link href={`/players/${row.discordId}`} className="font-semibold">
+            {row.discordName ?? "Unknown"}
           </Link>
         </td>
-        <td className="px-4 py-3 text-white/70">{formatIgn(player.ign)}</td>
-        <td className="px-4 py-3 text-white/70">{formatRank(rankValue, rankIsNa)}</td>
+        <td className="px-4 py-3 text-white/70">{formatIgn(row.ign)}</td>
+        <td className="px-4 py-3 text-white/70">{formatRank(row.rankValue, row.rankIsNa)}</td>
         <td className="px-4 py-3 text-white/70">
           {teamDef ? (
             <Link href={`/teams/${teamDef.slug}`} className="text-white/80 hover:text-white">
               {teamDef.displayName}
             </Link>
           ) : (
-            team ?? "—"
+            row.team ?? "—"
           )}
         </td>
-        <td className="px-4 py-3 text-white/70">{status ?? "—"}</td>
-        <td className="px-4 py-3 text-white/70">
-          {formatKd(player.total_k, player.total_d)}
-        </td>
+        <td className="px-4 py-3 text-white/70">{row.status ?? "—"}</td>
+        <td className="px-4 py-3 text-white/70">{formatKd(row.total_k, row.total_d)}</td>
       </tr>
     );
   };
@@ -199,9 +264,10 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
         <div className="flex flex-wrap gap-2">
           {[
             { key: "all", label: "All Players" },
-            { key: "teams", label: "All Teams" },
-            { key: "free", label: "All Free Agents" },
-            { key: "former", label: "All Former Players" }
+            { key: "active", label: "Active" },
+            { key: "free", label: "Free Agents" },
+            { key: "pending", label: "Pending" },
+            { key: "former", label: "Former Players" }
           ].map((button) => (
             <button
               key={button.key}
@@ -218,171 +284,81 @@ export default function PlayerLists({ players }: { players: PlayerWithStats[] })
         </div>
       </div>
 
-      {activeView !== "teams" && (
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search Discord, IGN, or team"
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
-          />
+      <div className="mt-6 grid gap-3 md:grid-cols-3">
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search Discord, IGN, or team"
+          className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
+        />
+        <select
+          value={leagueFilter}
+          onChange={(event) => setLeagueFilter(event.target.value as LeagueKey | "All")}
+          className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
+        >
+          {leagueOptions.map((league) => (
+            <option key={league} value={league} className="bg-lockdown-blue">
+              {league} League
+            </option>
+          ))}
+        </select>
+        <div className="grid gap-3 sm:grid-cols-2">
           <select
-            value={leagueFilter}
-            onChange={(event) => setLeagueFilter(event.target.value as LeagueKey | "All")}
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
           >
-            {leagueOptions.map((league) => (
-              <option key={league} value={league} className="bg-lockdown-blue">
-                {league} League
+            <option value="All" className="bg-lockdown-blue">
+              All Statuses
+            </option>
+            {statusOptions.map((status) => (
+              <option key={status} value={status} className="bg-lockdown-blue">
+                {status}
               </option>
             ))}
           </select>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
-            >
-              <option value="All" className="bg-lockdown-blue">
-                All Statuses
+          <select
+            value={teamFilter}
+            onChange={(event) => setTeamFilter(event.target.value)}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
+          >
+            <option value="All" className="bg-lockdown-blue">
+              All Teams
+            </option>
+            {teamOptions.map((team) => (
+              <option key={team} value={team} className="bg-lockdown-blue">
+                {team}
               </option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status} className="bg-lockdown-blue">
-                  {status}
-                </option>
-              ))}
-            </select>
-            <select
-              value={teamFilter}
-              onChange={(event) => setTeamFilter(event.target.value)}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80"
-            >
-              <option value="All" className="bg-lockdown-blue">
-                All Teams
-              </option>
-              {teamOptions.map((team) => (
-                <option key={team} value={team} className="bg-lockdown-blue">
-                  {team}
-                </option>
-              ))}
-            </select>
-          </div>
+            ))}
+          </select>
         </div>
-      )}
+      </div>
 
-      {activeView === "teams" ? (
-        <div className="mt-6 space-y-8">
-          {LEAGUE_LABELS.map((league) => {
-            const teams = getTeamsForLeague(league);
-            return (
-              <div key={league} className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white">{league} Teams</h3>
-                  <span className="text-xs uppercase tracking-[0.3em] text-white/50">
-                    {teams.length} squads
-                  </span>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {teams.map((team) => {
-                    const roster = players.filter((player) => {
-                      if (league === "Womens") {
-                        return (
-                          isWomensRegistered(player) &&
-                          player.womens_team === team.displayName &&
-                          player.women_status?.toLowerCase() !== "free agent"
-                        );
-                      }
-                      return (
-                        player.team === team.displayName &&
-                        !isFormerPlayer(player) &&
-                        isCoedRegistered(player) &&
-                        player.status?.toLowerCase() !== "free agent"
-                      );
-                    });
-
-                    return (
-                      <div
-                        key={team.slug}
-                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                      >
-                        <div className="flex items-center justify-between">
-                          <Link href={`/teams/${team.slug}`} className="text-white">
-                            <h4 className="text-base font-semibold">{team.displayName}</h4>
-                          </Link>
-                          <span className="text-xs text-white/50">{roster.length} players</span>
-                        </div>
-                        {roster.length === 0 ? (
-                          <p className="mt-3 text-sm text-white/50">No registered players.</p>
-                        ) : (
-                          <div className="mt-3 overflow-x-auto">
-                            <table className="min-w-full text-xs">
-                              <thead className="text-left uppercase tracking-widest text-white/40">
-                                <tr>
-                                  <th className="px-2 py-2">Discord</th>
-                                  <th className="px-2 py-2">Rank</th>
-                                  <th className="px-2 py-2">KD</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-white/5">
-                                {sortPlayers(roster, league).map((player) => {
-                                  const rank = getPlayerRankForLeague(player, league);
-                                  const isNa =
-                                    league === "Womens" ? rank === null : !isCoedRegistered(player);
-                                  return (
-                                    <tr key={player.discord_id}>
-                                      <td className="px-2 py-2 text-white">
-                                        <Link href={`/players/${player.discord_id}`}>
-                                          {player.discord_name ?? "Unknown"}
-                                        </Link>
-                                      </td>
-                                      <td className="px-2 py-2 text-white/70">
-                                        {formatRank(rank, isNa)}
-                                      </td>
-                                      <td className="px-2 py-2 text-white/70">
-                                        {formatKd(player.total_k, player.total_d)}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10">
-          <table className="min-w-full divide-y divide-white/10 text-sm">
-            <thead className="bg-white/5 text-left text-xs uppercase tracking-widest text-white/50">
+      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10">
+        <table className="min-w-full divide-y divide-white/10 text-sm">
+          <thead className="bg-white/5 text-left text-xs uppercase tracking-widest text-white/50">
+            <tr>
+              <th className="px-4 py-3">Discord Name</th>
+              <th className="px-4 py-3">Activision (IGN)</th>
+              <th className="px-4 py-3">Rank</th>
+              <th className="px-4 py-3">Team</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">OVR KD</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/10">
+            {filteredRows.length === 0 ? (
               <tr>
-                <th className="px-4 py-3">Discord Name</th>
-                <th className="px-4 py-3">Activision (IGN)</th>
-                <th className="px-4 py-3">Rank</th>
-                <th className="px-4 py-3">Team</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">OVR KD</th>
+                <td colSpan={6} className="px-4 py-6 text-center text-white/60">
+                  No players match those filters.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-white/10">
-              {filteredPlayers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-white/60">
-                    No players match those filters.
-                  </td>
-                </tr>
-              ) : (
-                filteredPlayers.map((player) => renderPlayerRow(player, leagueFilter))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ) : (
+              filteredRows.map((row) => renderPlayerRow(row))
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
