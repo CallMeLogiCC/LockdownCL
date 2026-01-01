@@ -70,6 +70,32 @@ create table if not exists match_log (
 
 create index if not exists match_log_season_match_id_idx on match_log (season, match_id);
 
+create table if not exists schedule (
+  schedule_id text primary key,
+  season integer not null default 2,
+  week integer,
+  start_date date,
+  end_date date,
+  division text,
+  home_team text,
+  away_team text,
+  home_gm text,
+  away_gm text,
+  match_time text,
+  stream_link text,
+  slug text not null,
+  source_sheet text not null,
+  source_row integer not null,
+  unique (source_sheet, source_row),
+  constraint schedule_season_valid check (season in (0, 1, 2))
+);
+
+create index if not exists schedule_season_idx on schedule (season);
+create index if not exists schedule_division_idx on schedule (division);
+create index if not exists schedule_home_team_idx on schedule (home_team);
+create index if not exists schedule_away_team_idx on schedule (away_team);
+create index if not exists schedule_week_idx on schedule (week);
+
 create table if not exists player_ovr (
   discord_name text,
   discord_id text primary key,

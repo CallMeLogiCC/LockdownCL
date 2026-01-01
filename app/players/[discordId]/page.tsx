@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { hasDatabaseUrl } from "@/lib/db";
 import {
   getPlayerProfile,
@@ -107,6 +107,9 @@ export default async function PlayerPage({
   ]);
 
   if (!profile) {
+    if (session?.user?.discordId === params.discordId) {
+      redirect("/howtojoin");
+    }
     notFound();
   }
 

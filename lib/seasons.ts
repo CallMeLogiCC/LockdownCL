@@ -5,9 +5,9 @@ import type { SeasonNumber } from "@/lib/types";
 export const DEFAULT_SEASON: SeasonNumber = 2;
 
 export const SEASON_LABELS: Array<{ value: SeasonNumber; label: string }> = [
-  { value: 0, label: "Season 0" },
+  { value: 2, label: "Season 2" },
   { value: 1, label: "Season 1" },
-  { value: 2, label: "Season 2" }
+  { value: 0, label: "Season 0" }
 ];
 
 const SEASON0_TEAMS: Record<"Lowers" | "Uppers", string[]> = {

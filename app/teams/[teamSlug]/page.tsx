@@ -2,7 +2,12 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { hasDatabaseUrl } from "@/lib/db";
-import { getMatchesByTeam, getTeamModeWinRates, getTeamRoster } from "@/lib/queries";
+import {
+  getMatchesByTeam,
+  getScheduleByTeam,
+  getTeamModeWinRates,
+  getTeamRoster
+} from "@/lib/queries";
 import type { PlayerWithStats, TeamModeWinRateRow } from "@/lib/types";
 import JsonLd from "@/app/components/JsonLd";
 import {
@@ -14,6 +19,11 @@ import {
 import { getTeamDefinitionBySlug } from "@/lib/teams";
 import TeamLogo from "@/app/components/TeamLogo";
 import { DEFAULT_SEASON } from "@/lib/seasons";
+import {
+  formatScheduleDateRange,
+  linkScheduleMatches,
+  normalizeScheduleDivision
+} from "@/lib/schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -155,14 +165,16 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
     notFound();
   }
 
-  const [roster, matches, modeRates] = await Promise.all([
+  const [roster, matches, modeRates, schedule] = await Promise.all([
     getTeamRoster(team, teamDef.league, DEFAULT_SEASON),
     getMatchesByTeam(team, DEFAULT_SEASON),
-    getTeamModeWinRates(team, DEFAULT_SEASON)
+    getTeamModeWinRates(team, DEFAULT_SEASON),
+    getScheduleByTeam(team, DEFAULT_SEASON)
   ]);
 
   const record = computeTeamRecord(team, matches);
   const isWomens = teamDef.league === "Womens";
+  const linkedSchedule = linkScheduleMatches(schedule, matches);
 
   return (
     <section className="flex flex-col gap-6">
@@ -255,6 +267,68 @@ export default async function TeamPage({ params }: { params: { teamSlug: string 
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <h3 className="text-lg font-semibold text-white">Schedule</h3>
+        {linkedSchedule.length === 0 ? (
+          <p className="mt-2 text-sm text-white/60">No scheduled matches listed.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10">
+            <table className="min-w-full divide-y divide-white/10 text-sm">
+              <thead className="bg-white/5 text-left text-xs uppercase tracking-widest text-white/50">
+                <tr>
+                  <th className="px-4 py-3">Week</th>
+                  <th className="px-4 py-3">Division</th>
+                  <th className="px-4 py-3">Opponent</th>
+                  <th className="px-4 py-3">Home/Away</th>
+                  <th className="px-4 py-3">Match Time</th>
+                  <th className="px-4 py-3">Stream Link</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {linkedSchedule.map((entry) => {
+                  const opponent =
+                    entry.home_team === team ? entry.away_team : entry.home_team;
+                  const homeAway = entry.home_team === team ? "Home" : "Away";
+                  const divisionLabel =
+                    normalizeScheduleDivision(entry.division) ?? "TBD";
+                  const href = entry.matchId
+                    ? `/matches/${entry.matchId}`
+                    : `/matches/scheduled/${entry.slug}`;
+
+                  return (
+                    <tr key={entry.schedule_id} className="hover:bg-white/5">
+                      <td className="px-4 py-3 text-white">
+                        <Link href={href} className="font-semibold">
+                          {entry.week ?? "TBD"}
+                        </Link>
+                        <p className="text-xs text-white/50">
+                          {formatScheduleDateRange(entry.start_date, entry.end_date)}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-white/70">{divisionLabel}</td>
+                      <td className="px-4 py-3 text-white/70">
+                        {opponent ?? "TBD"}
+                      </td>
+                      <td className="px-4 py-3 text-white/70">{homeAway}</td>
+                      <td className="px-4 py-3 text-white/70">
+                        {entry.match_time ?? ""}
+                      </td>
+                      <td className="px-4 py-3 text-white/70">
+                        {entry.stream_link ? (
+                          <Link href={entry.stream_link} className="underline">
+                            Stream
+                          </Link>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

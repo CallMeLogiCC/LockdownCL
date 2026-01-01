@@ -6,30 +6,27 @@ import { getTeamLogo } from "@/lib/teams";
 
 export const runtime = "edge";
 
-const formatSeasonLabel = (season: number | null) =>
-  season === null ? "Season" : `Season ${season}`;
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const matchId = searchParams.get("matchId");
+  const slug = searchParams.get("slug");
 
-  if (!matchId) {
-    return new Response("Missing matchId", { status: 400 });
+  if (!slug) {
+    return new Response("Missing slug", { status: 400 });
   }
 
   const origin = new URL(request.url).origin;
-  const dataResponse = await fetch(`${origin}/api/seo/match?matchId=${matchId}`);
+  const dataResponse = await fetch(`${origin}/api/seo/scheduled?slug=${slug}`);
 
   if (!dataResponse.ok) {
-    return new Response("Match not found", { status: 404 });
+    return new Response("Scheduled match not found", { status: 404 });
   }
 
   const data = (await dataResponse.json()) as {
     homeTeam: string;
     awayTeam: string;
-    scoreline: string;
-    winner: string;
-    season: number;
+    division: string;
+    week: number | null;
+    matchTime: string | null;
     homeTeamSlug: string | null;
     homeTeamLeague: "Lowers" | "Uppers" | "Legends" | "Womens" | null;
     awayTeamSlug: string | null;
@@ -71,7 +68,7 @@ export async function GET(request: Request) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: "24px"
+            gap: 24
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -96,10 +93,21 @@ export async function GET(request: Request) {
           </div>
 
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 56, fontWeight: 700 }}>{data.scoreline}</div>
-            <div style={{ fontSize: 24, color: "#fb923c" }}>{data.winner} Wins</div>
-            <div style={{ fontSize: 20, color: "#94a3b8" }}>
-              {formatSeasonLabel(data.season)}
+            <div
+              style={{
+                fontSize: 24,
+                textTransform: "uppercase",
+                letterSpacing: "0.3em",
+                color: "#fb923c"
+              }}
+            >
+              Scheduled
+            </div>
+            <div style={{ fontSize: 30, fontWeight: 700, marginTop: 12 }}>
+              {data.matchTime ?? "TBD"}
+            </div>
+            <div style={{ fontSize: 20, color: "#94a3b8", marginTop: 6 }}>
+              {data.division} · Week {data.week ?? "TBD"}
             </div>
           </div>
 
@@ -127,7 +135,7 @@ export async function GET(request: Request) {
           </div>
         </div>
 
-        <div style={{ fontSize: 20, color: "#475569" }}>Match recap</div>
+        <div style={{ fontSize: 20, color: "#475569" }}>Scheduled match preview</div>
       </div>
     ),
     {

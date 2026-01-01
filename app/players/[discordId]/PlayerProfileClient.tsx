@@ -130,6 +130,7 @@ export default function PlayerProfileClient({
 }) {
   const [season, setSeason] = useState<(typeof seasons)[number]>("Season 2");
   const [lifetimeTab, setLifetimeTab] = useState<(typeof lifetimeTabs)[number]>("All");
+  const [showWarning, setShowWarning] = useState(showPrivateWarning);
 
   const rankDisplay = useMemo(
     () => formatRank(profile.rank_value, profile.rank_is_na),
@@ -207,9 +208,21 @@ export default function PlayerProfileClient({
 
   return (
     <section className="flex flex-col gap-6">
-      {showPrivateWarning ? (
-        <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-          You are currently not registered for the league.
+      {showWarning && showPrivateWarning ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+          <div>
+            You are currently not registered for LockdownCL.{" "}
+            <Link href="/howtojoin" className="text-amber-200 underline">
+              Click here to learn how to join.
+            </Link>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowWarning(false)}
+            className="text-xs uppercase tracking-[0.3em] text-amber-200"
+          >
+            Dismiss
+          </button>
         </div>
       ) : null}
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/80 shadow-[0_0_40px_rgba(0,0,0,0.4)]">

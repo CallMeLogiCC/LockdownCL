@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { hasDatabaseUrl } from "@/lib/db";
 import { getSeriesById } from "@/lib/queries";
 import { getMatchScoreline, getMatchWinner } from "@/lib/seo";
+import { getTeamDefinitionByName } from "@/lib/teams";
 
 export const runtime = "nodejs";
 
@@ -23,12 +24,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const homeTeam = match.home_team ?? "TBD";
+  const awayTeam = match.away_team ?? "TBD";
+  const homeDef = getTeamDefinitionByName(match.home_team);
+  const awayDef = getTeamDefinitionByName(match.away_team);
+
   return NextResponse.json({
     matchId,
-    homeTeam: match.home_team ?? "TBD",
-    awayTeam: match.away_team ?? "TBD",
+    homeTeam,
+    awayTeam,
     scoreline: getMatchScoreline(match),
     winner: getMatchWinner(match) ?? "TBD",
-    matchDate: match.match_date
+    matchDate: match.match_date,
+    season: match.season,
+    homeTeamSlug: homeDef?.slug ?? null,
+    homeTeamLeague: homeDef?.league ?? null,
+    awayTeamSlug: awayDef?.slug ?? null,
+    awayTeamLeague: awayDef?.league ?? null
   });
 }

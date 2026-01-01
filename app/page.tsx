@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { hasDatabaseUrl } from "@/lib/db";
-import { getPrizePool } from "@/lib/queries";
 import { buildCanonicalUrl, SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
 import { announcements } from "@/src/config/announcements";
+import { PRIZE_POOL, formatPrizePoolUsd } from "@/src/config/prizePool";
 
 export const dynamic = "force-dynamic";
 
@@ -34,24 +33,12 @@ export const metadata: Metadata = {
   }
 };
 
-const formatPrizeValue = (value: string | number | null) => {
-  if (value === null || value === undefined || value === "") {
-    return "TBD";
-  }
-  const numeric = typeof value === "number" ? value : Number(value);
-  if (!Number.isNaN(numeric)) {
-    return `$${numeric.toLocaleString()}`;
-  }
-  return String(value);
-};
-
 export default async function HomePage() {
-  const prizePool = hasDatabaseUrl() ? await getPrizePool() : null;
   const prizeItems = [
-    { label: "Lowers", value: prizePool?.lowers ?? null },
-    { label: "Uppers", value: prizePool?.uppers ?? null },
-    { label: "Legends", value: prizePool?.legends ?? null },
-    { label: "Womens", value: prizePool?.womens ?? null }
+    { label: "Lowers", value: PRIZE_POOL.lowers },
+    { label: "Uppers", value: PRIZE_POOL.uppers },
+    { label: "Legends", value: PRIZE_POOL.legends },
+    { label: "Womens", value: PRIZE_POOL.womens }
   ];
 
   return (
@@ -95,6 +82,12 @@ export default async function HomePage() {
                 className="rounded-full border border-white/20 px-5 py-2 text-xs uppercase tracking-[0.3em] text-white/70 hover:border-white/60"
               >
                 Join Discord
+              </Link>
+              <Link
+                href="/howtojoin"
+                className="rounded-full border border-white/20 px-5 py-2 text-xs uppercase tracking-[0.3em] text-white/70 hover:border-white/60"
+              >
+                How to Join
               </Link>
             </div>
           </div>
@@ -148,23 +141,17 @@ export default async function HomePage() {
             </span>
           </div>
           <div className="mt-4 grid gap-3">
-            {prizePool ? (
-              prizeItems.map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3"
-                >
-                  <span className="text-sm text-white/80">{item.label}</span>
-                  <span className="text-sm font-semibold text-white">
-                    {formatPrizeValue(item.value)}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-white/60">
-                Prize pool data is not available yet. Check back soon.
-              </p>
-            )}
+            {prizeItems.map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/30 px-4 py-3"
+              >
+                <span className="text-sm text-white/80">{item.label}</span>
+                <span className="text-sm font-semibold text-white">
+                  {formatPrizePoolUsd(item.value)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
