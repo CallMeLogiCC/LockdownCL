@@ -744,6 +744,32 @@ export async function getUserProfile(discordId: string): Promise<UserProfile | n
   }
 }
 
+export type PrizePoolRow = {
+  lowers: string | number | null;
+  uppers: string | number | null;
+  legends: string | number | null;
+  womens: string | number | null;
+};
+
+export async function getPrizePool(): Promise<PrizePoolRow | null> {
+  try {
+    const { rows } = await getPool().query(
+      `
+      select lowers, uppers, legends, womens
+      from prize_pool
+      limit 1
+      `
+    );
+
+    return (rows as PrizePoolRow[])[0] ?? null;
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function ensureUserProfile({
   discordId,
   avatarUrl,

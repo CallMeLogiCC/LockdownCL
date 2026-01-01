@@ -77,6 +77,9 @@ export const authOptions: NextAuthOptions = {
           bannerUrl
         });
       }
+      if (account?.provider === "discord") {
+        return "/account";
+      }
       return true;
     },
     async jwt({ token, account }) {

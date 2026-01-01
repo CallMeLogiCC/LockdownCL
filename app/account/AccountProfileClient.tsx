@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { UserProfile, Player } from "@/lib/types";
 import { normalizeSocialHandle } from "@/lib/socials";
 
@@ -49,6 +50,7 @@ export default function AccountProfileClient({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<"avatar" | "banner" | null>(null);
+  const router = useRouter();
 
   const uploadImage = async (file: File, type: "avatar" | "banner") => {
     setError(null);
@@ -118,6 +120,7 @@ export default function AccountProfileClient({
         throw new Error(data?.error ?? "Unable to save profile");
       }
       setStatus("Profile updated.");
+      router.push(`/players/${discordId}`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save profile");
     } finally {

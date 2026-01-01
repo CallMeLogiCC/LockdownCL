@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getAuthSession } from "@/lib/auth";
+import { getUserProfile, updateUserProfile } from "@/lib/queries";
 
 const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
@@ -18,6 +19,14 @@ export async function POST(request: Request) {
 
   if (!discordId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) {
+    return NextResponse.json(
+      { error: "Uploads are not configured. Missing BLOB_READ_WRITE_TOKEN." },
+      { status: 500 }
+    );
   }
 
   try {
@@ -63,8 +72,27 @@ export async function POST(request: Request) {
 
     const blob = await put(pathname, file, {
       access: "public",
-      contentType: file.type
+      contentType: file.type,
+      token
     });
+
+    const existingProfile = await getUserProfile(discordId);
+    const updated = await updateUserProfile({
+      discordId,
+      avatarUrl: type === "avatar" ? blob.url : existingProfile?.avatar_url ?? null,
+      bannerUrl: type === "banner" ? blob.url : existingProfile?.banner_url ?? null,
+      twitterUrl: existingProfile?.twitter_url ?? null,
+      twitchUrl: existingProfile?.twitch_url ?? null,
+      youtubeUrl: existingProfile?.youtube_url ?? null,
+      tiktokUrl: existingProfile?.tiktok_url ?? null
+    });
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Profile storage is unavailable. Upload succeeded but was not saved." },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ url: blob.url });
   } catch (error) {
