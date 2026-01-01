@@ -4,7 +4,8 @@ import type {
   MapLogIngest,
   MatchLogIngest,
   Player,
-  PlayerLogEntryIngest
+  PlayerLogEntryIngest,
+  ScheduleMatchIngest
 } from "@/lib/types";
 import { hasDatabaseUrl } from "@/lib/db";
 import {
@@ -13,9 +14,12 @@ import {
   upsertMaps,
   upsertPlayerLogEntries,
   upsertPlayers,
+  upsertSchedule,
   upsertSeries
 } from "@/lib/queries";
 import { isSeasonValue, type SeasonNumber } from "@/lib/seasons";
+import { buildScheduleSlug } from "@/lib/schedule";
+import { createHash } from "crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,10 +28,12 @@ const PLAYERS_RANGE_FALLBACK = "Player OVR!A2:J";
 const SERIES_RANGE_FALLBACK = "Match Log!A2:I";
 const MAPS_RANGE_FALLBACK = "Map Log!A2:F";
 const PLAYER_LOG_RANGE_FALLBACK = "Player Log!A2:P";
+const SCHEDULE_RANGE_FALLBACK = "schedule!A2:J";
 
 const SERIES_GRID_RANGE = "A2:I";
 const MAPS_GRID_RANGE = "A2:F";
 const PLAYER_LOG_GRID_RANGE = "A2:P";
+const SCHEDULE_GRID_RANGE = "A2:J";
 
 const SEASON_SHEETS: Record<
   SeasonNumber,
@@ -140,6 +146,14 @@ const toNullableInteger = (value: unknown) => {
   return numeric === null ? null : Math.round(numeric);
 };
 
+const toNullableString = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const text = String(value).trim();
+  return text.length === 0 ? null : text;
+};
+
 const toRequiredInteger = (value: unknown) => {
   const numeric = toNullableInteger(value);
   return numeric ?? 0;
@@ -199,6 +213,13 @@ const normalizeMatchDate = (value: string) => {
   }
 
   return null;
+};
+
+const buildScheduleId = (values: Array<string | number | null>) => {
+  const payload = values
+    .map((value) => (value === null || value === undefined ? "" : String(value)))
+    .join("|");
+  return createHash("sha256").update(payload).digest("hex");
 };
 
 const allowedModes = ["Hardpoint", "SnD", "Control"] as const;
@@ -295,10 +316,12 @@ export async function POST(request: NextRequest) {
       "SHEET_RANGE_PLAYER_LOG",
       PLAYER_LOG_RANGE_FALLBACK
     );
+    const scheduleRange = getRange("SHEET_RANGE_SCHEDULE", SCHEDULE_RANGE_FALLBACK);
 
     const seriesGrid = getGridRange(seriesRange, SERIES_GRID_RANGE);
     const mapsGrid = getGridRange(mapsRange, MAPS_GRID_RANGE);
     const playerLogGrid = getGridRange(playerLogRange, PLAYER_LOG_GRID_RANGE);
+    const scheduleGrid = getGridRange(scheduleRange, SCHEDULE_GRID_RANGE);
 
     const playerHeaderRange = getHeaderRange(playerRange);
     const playerResponse = await sheets.spreadsheets.values.batchGet({
@@ -324,15 +347,21 @@ export async function POST(request: NextRequest) {
         seasonSheets.playerLog,
         playerLogGrid
       );
+      const seasonScheduleRange =
+        season === 2 ? buildSeasonRange("schedule", scheduleGrid) : null;
 
       const seasonSeriesHeaderRange = getHeaderRange(seasonSeriesRange);
       const seasonMapsHeaderRange = getHeaderRange(seasonMapsRange);
       const seasonPlayerLogHeaderRange = getHeaderRange(seasonPlayerLogRange);
+      const seasonScheduleHeaderRange = seasonScheduleRange
+        ? getHeaderRange(seasonScheduleRange)
+        : null;
 
       const seasonHeaderRanges = [
         seasonSeriesHeaderRange,
         seasonMapsHeaderRange,
-        seasonPlayerLogHeaderRange
+        seasonPlayerLogHeaderRange,
+        seasonScheduleHeaderRange
       ].filter((range): range is string => Boolean(range));
 
       const response = await sheets.spreadsheets.values.batchGet({
@@ -341,14 +370,15 @@ export async function POST(request: NextRequest) {
           seasonSeriesRange,
           seasonMapsRange,
           seasonPlayerLogRange,
+          ...(seasonScheduleRange ? [seasonScheduleRange] : []),
           ...seasonHeaderRanges
         ]
       });
 
       const valueRanges =
         response.data.valueRanges?.map((range) => range.values ?? []) ?? [];
-      const [seriesValues, mapValues, playerLogValues] = valueRanges;
-      let headerOffset = 3;
+      const [seriesValues, mapValues, playerLogValues, scheduleValues] = valueRanges;
+      let headerOffset = seasonScheduleRange ? 4 : 3;
       const seriesHeaderValues = seasonSeriesHeaderRange
         ? valueRanges[headerOffset++] ?? []
         : [];
@@ -358,16 +388,25 @@ export async function POST(request: NextRequest) {
       const playerLogHeaderValues = seasonPlayerLogHeaderRange
         ? valueRanges[headerOffset++] ?? []
         : [];
+      const scheduleHeaderValues =
+        seasonScheduleHeaderRange && seasonScheduleRange
+          ? valueRanges[headerOffset++] ?? []
+          : [];
 
       const mapHeaderIndex = buildHeaderIndex(mapsHeaderValues[0] ?? []);
       const playerLogHeaderIndex = buildHeaderIndex(playerLogHeaderValues[0] ?? []);
+      const scheduleHeaderIndex = buildHeaderIndex(scheduleHeaderValues[0] ?? []);
 
       const seriesStartRow = getStartRow(seasonSeriesRange);
       const mapsStartRow = getStartRow(seasonMapsRange);
       const playerLogStartRow = getStartRow(seasonPlayerLogRange);
+      const scheduleStartRow = seasonScheduleRange
+        ? getStartRow(seasonScheduleRange)
+        : 1;
       const seriesSheet = getSheetName(seasonSeriesRange);
       const mapsSheet = getSheetName(seasonMapsRange);
       const playerLogSheet = getSheetName(seasonPlayerLogRange);
+      const scheduleSheet = seasonScheduleRange ? getSheetName(seasonScheduleRange) : "";
 
       const series = withSourceRows(seriesValues ?? [], seriesStartRow)
         .map(({ row, source_row }) => {
@@ -532,14 +571,101 @@ export async function POST(request: NextRequest) {
         })
         .filter((stat): stat is NonNullable<typeof stat> => Boolean(stat));
 
+      const schedule =
+        seasonScheduleRange && season === 2
+          ? withSourceRows(scheduleValues ?? [], scheduleStartRow)
+              .map(({ row, source_row }) => {
+                const week = toNullableInteger(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["week"], 0)]
+                );
+                const startDate = normalizeMatchDate(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["start date", "start"], 1)] ??
+                    ""
+                );
+                const endDate = normalizeMatchDate(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["end date", "end"], 2)] ?? ""
+                );
+                const division = toNullableString(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["division"], 3)]
+                );
+                const homeTeam = toNullableString(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["home team", "home"], 4)]
+                );
+                const awayTeam = toNullableString(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["away team", "away"], 5)]
+                );
+                const homeGm = toNullableString(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["home gm", "home gm name"], 6)]
+                );
+                const awayGm = toNullableString(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["away gm", "away gm name"], 7)]
+                );
+                const matchTime = toNullableString(
+                  row[getHeaderIndex(scheduleHeaderIndex, ["match time", "time"], 8)]
+                );
+                const streamLink = toNullableString(
+                  row[
+                    getHeaderIndex(
+                      scheduleHeaderIndex,
+                      ["stream link/vod", "stream link", "vod"],
+                      9
+                    )
+                  ]
+                );
+
+                if (!homeTeam && !awayTeam && !division && !week) {
+                  return null;
+                }
+
+                const scheduleId = buildScheduleId([
+                  season,
+                  week,
+                  startDate,
+                  endDate,
+                  division,
+                  homeTeam,
+                  awayTeam,
+                  homeGm,
+                  awayGm,
+                  matchTime,
+                  streamLink
+                ]);
+
+                return {
+                  schedule_id: scheduleId,
+                  season,
+                  week,
+                  start_date: startDate,
+                  end_date: endDate,
+                  division,
+                  home_team: homeTeam,
+                  away_team: awayTeam,
+                  home_gm: homeGm,
+                  away_gm: awayGm,
+                  match_time: matchTime,
+                  stream_link: streamLink,
+                  slug: buildScheduleSlug({
+                    season,
+                    home_team: homeTeam,
+                    away_team: awayTeam
+                  }),
+                  source_sheet: scheduleSheet,
+                  source_row
+                } satisfies ScheduleMatchIngest;
+              })
+              .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+          : [];
+
       const upsertedSeries = await upsertSeries(series);
       const upsertedMaps = await upsertMaps(maps);
       const upsertedPlayerStats = await upsertPlayerLogEntries(playerStats);
+      const upsertedSchedule = await upsertSchedule(schedule);
 
       (summary.seasons as Record<string, unknown>)[season] = {
         match_log: upsertedSeries,
         map_log: upsertedMaps,
-        player_log: upsertedPlayerStats
+        player_log: upsertedPlayerStats,
+        schedule: upsertedSchedule
       };
     }
 

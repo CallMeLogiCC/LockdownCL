@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { hasDatabaseUrl } from "@/lib/db";
-import { getMatchesBySeason } from "@/lib/queries";
+import { getMatchesBySeason, getScheduleBySeason } from "@/lib/queries";
 import { buildCanonicalUrl, SITE_NAME, SITE_TAGLINE } from "@/lib/seo";
 import { SEASON_LABELS } from "@/lib/seasons";
 import type { MatchLog, SeasonNumber } from "@/lib/types";
@@ -55,6 +55,7 @@ export default async function MatchesPage() {
     SeasonNumber,
     MatchLog[]
   >;
+  const schedule = await getScheduleBySeason(2);
 
   return (
     <section className="flex flex-col gap-6">
@@ -65,7 +66,7 @@ export default async function MatchesPage() {
         </p>
       </div>
 
-      <MatchesFiltersClient matchesBySeason={matchesBySeason} />
+      <MatchesFiltersClient matchesBySeason={matchesBySeason} schedule={schedule} />
     </section>
   );
 }

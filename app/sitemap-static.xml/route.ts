@@ -2,6 +2,7 @@ import { SITE_URL } from "@/lib/seo";
 
 const STATIC_ROUTES = [
   { path: "/", changefreq: "weekly", priority: 1.0 },
+  { path: "/howtojoin", changefreq: "monthly", priority: 0.7 },
   { path: "/players", changefreq: "weekly", priority: 0.9 },
   { path: "/teams", changefreq: "weekly", priority: 0.8 },
   { path: "/standings", changefreq: "daily", priority: 0.8 },
